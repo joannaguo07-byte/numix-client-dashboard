@@ -1,0 +1,293 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Attachment01, ArrowUp, ChevronLeft, Stars01 } from "@untitledui/icons";
+import { cx } from "@/utils/cx";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Sender = "user" | "system" | "agent";
+
+interface Message {
+    id: string;
+    sender: Sender;
+    text: string;
+    time: string;
+    streaming?: boolean;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getTime() {
+    return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+const SUGGESTIONS = ["I need help with my tax return", "Can you review my expenses?", "Question about a deduction"];
+
+const SYSTEM_ACK = "Numix Team will be notified. Someone will follow up shortly.";
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function UserBubble({ message }: { message: Message }) {
+    return (
+        <div className="flex justify-end">
+            <div className="max-w-sm">
+                <div className="rounded-2xl rounded-tr-sm bg-brand-solid px-4 py-3 text-sm text-white">{message.text}</div>
+                <p className="mt-1 text-right text-xs text-tertiary">{message.time}</p>
+            </div>
+        </div>
+    );
+}
+
+function SystemBubble({ message }: { message: Message }) {
+    return (
+        <div className="flex items-start gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary">N</div>
+            <div className="max-w-sm rounded-2xl rounded-tl-sm bg-secondary px-4 py-3">
+                <p className="mb-0.5 text-xs font-semibold text-tertiary">Numix</p>
+                <p className="text-sm text-primary">{message.text}</p>
+                <p className="mt-1 text-xs text-tertiary">{message.time}</p>
+            </div>
+        </div>
+    );
+}
+
+function AgentBubble({ message }: { message: Message }) {
+    return (
+        <div className="flex items-start gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-solid text-xs font-semibold text-white">NT</div>
+            <div className="max-w-md rounded-2xl rounded-tl-sm border border-secondary bg-primary px-4 py-3 shadow-xs">
+                <p className="mb-0.5 text-xs font-semibold text-tertiary">Numix Team</p>
+                <p className="text-sm text-primary">
+                    {message.text}
+                    {message.streaming && <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-brand-solid align-middle" />}
+                </p>
+                {!message.streaming && <p className="mt-1 text-xs text-tertiary">{message.time}</p>}
+            </div>
+        </div>
+    );
+}
+
+function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void; }) {
+    return (
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
+            <div className="flex size-14 items-center justify-center rounded-full bg-secondary">
+                <Stars01 className="size-6 text-fg-tertiary" />
+            </div>
+            <div className="max-w-sm">
+                <h2 className="text-xl font-semibold text-primary">Ask your accountant anything</h2>
+                <p className="mt-2 text-sm leading-relaxed text-tertiary">
+                    Send a message and the Numix Team will get back to you. Use this for questions, clarifications, and back-and-forth discussions.
+                </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+                {SUGGESTIONS.map((s) => (
+                    <button
+                        key={s}
+                        type="button"
+                        onClick={() => onSuggestion(s)}
+                        className="rounded-full border border-secondary bg-primary px-4 py-2 text-sm text-secondary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                    >
+                        {s}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ─── Shared chat logic hook ───────────────────────────────────────────────────
+
+function useChat() {
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [input, setInput] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const bottomRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    async function sendMessage(text: string) {
+        if (!text.trim() || isLoading) return;
+
+        const time = getTime();
+        const userMessage: Message = { id: crypto.randomUUID(), sender: "user", text: text.trim(), time };
+
+        setMessages((prev) => [...prev, userMessage]);
+        setInput("");
+        setIsLoading(true);
+
+        await new Promise((r) => setTimeout(r, 400));
+        const sysMessage: Message = { id: crypto.randomUUID(), sender: "system", text: SYSTEM_ACK, time };
+        setMessages((prev) => [...prev, sysMessage]);
+
+        const agentId = crypto.randomUUID();
+        setMessages((prev) => [...prev, { id: agentId, sender: "agent", text: "", time, streaming: true }]);
+
+        try {
+            // Build proper multi-turn conversation history (user + assistant turns)
+            const history = [...messages, userMessage]
+                .filter((m) => (m.sender === "user" || m.sender === "agent") && !m.streaming && m.text.trim())
+                .map((m) => ({
+                    role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+                    content: m.text,
+                }));
+
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messages: history }),
+            });
+
+            if (!response.body) throw new Error("No response body");
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulated = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                accumulated += decoder.decode(value, { stream: true });
+                setMessages((prev) => prev.map((m) => (m.id === agentId ? { ...m, text: accumulated } : m)));
+            }
+
+            setMessages((prev) => prev.map((m) => (m.id === agentId ? { ...m, streaming: false, time: getTime() } : m)));
+        } catch {
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.id === agentId
+                        ? { ...m, text: "We've received your message. The Numix Team will follow up shortly.", streaming: false }
+                        : m,
+                ),
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage(input);
+        }
+    }
+
+    return { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown };
+}
+
+// ─── Panel (used inside the main layout) ─────────────────────────────────────
+
+export function NewAskPanel({ onBack }: { onBack?: () => void }) {
+    const { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown } = useChat();
+
+    function handleSuggestion(text: string) {
+        setInput(text);
+        setTimeout(() => {
+            if (inputRef.current) {
+                inputRef.current.focus();
+                inputRef.current.style.height = "auto";
+                inputRef.current.style.height = `${inputRef.current.scrollHeight}px`;
+            }
+        }, 0);
+    }
+
+    return (
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-primary">
+            {/* Header */}
+            <header className="flex shrink-0 items-center justify-between border-b border-secondary bg-primary px-6 py-4">
+                <div className="flex items-center gap-4">
+                    {onBack && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={onBack}
+                                className="flex items-center gap-1.5 text-sm text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                            >
+                                <ChevronLeft className="size-4" aria-hidden />
+                                Home
+                            </button>
+                            <div className="h-5 w-px bg-border-secondary" />
+                        </>
+                    )}
+                    <div>
+                        <p className="text-sm font-semibold text-primary">New Accountant Ask</p>
+                        <p className="text-xs text-tertiary">Numix Team will be notified</p>
+                    </div>
+                </div>
+                <div className="flex size-9 items-center justify-center rounded-full bg-brand-solid text-xs font-semibold text-white">NT</div>
+            </header>
+
+            {/* Messages */}
+            <div className="flex flex-1 flex-col overflow-y-auto">
+                {messages.length === 0 ? (
+                    <EmptyState onSuggestion={handleSuggestion} />
+                ) : (
+                    <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-6 py-8">
+                        {messages.map((msg) => {
+                            if (msg.sender === "user") return <UserBubble key={msg.id} message={msg} />;
+                            if (msg.sender === "system") return <SystemBubble key={msg.id} message={msg} />;
+                            return <AgentBubble key={msg.id} message={msg} />;
+                        })}
+                        <div ref={bottomRef} />
+                    </div>
+                )}
+            </div>
+
+            {/* Input */}
+            <div className="shrink-0 border-t border-secondary bg-primary px-6 py-4">
+                <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-xl border border-secondary bg-primary px-4 py-3 shadow-xs transition duration-100 ease-linear focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
+                    <button
+                        type="button"
+                        className="shrink-0 text-fg-quaternary transition duration-100 ease-linear hover:text-fg-tertiary"
+                        aria-label="Attach file"
+                    >
+                        <Attachment01 className="size-5" />
+                    </button>
+                    <textarea
+                        ref={inputRef}
+                        rows={1}
+                        value={input}
+                        onChange={(e) => {
+                            setInput(e.target.value);
+                            e.target.style.height = "auto";
+                            e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                        }}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Type your message..."
+                        disabled={isLoading}
+                        className="max-h-40 flex-1 resize-none bg-transparent text-sm text-primary placeholder:text-placeholder focus:outline-none disabled:opacity-60"
+                        style={{ height: "24px" }}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => sendMessage(input)}
+                        disabled={!input.trim() || isLoading}
+                        className={cx(
+                            "flex size-8 shrink-0 items-center justify-center rounded-full transition duration-100 ease-linear",
+                            input.trim() && !isLoading ? "bg-brand-solid text-white hover:opacity-90" : "bg-secondary text-fg-quaternary",
+                        )}
+                        aria-label="Send message"
+                    >
+                        <ArrowUp className="size-4" />
+                    </button>
+                </div>
+                <p className="mt-2 text-center text-xs text-quaternary">
+                    Your message will be sent to the Numix Team. Typically responds within 1 business day.
+                </p>
+            </div>
+        </div>
+    );
+}
+
+// ─── Full-page wrapper (for direct /new-ask route) ────────────────────────────
+
+export function NewAskScreen() {
+    return (
+        <div className="flex h-dvh flex-col">
+            <NewAskPanel />
+        </div>
+    );
+}

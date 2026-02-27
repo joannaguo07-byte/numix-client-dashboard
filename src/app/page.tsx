@@ -1,3 +1,3 @@
-import { HomeScreen } from "./home-screen";
+import { NumixScreen } from "./numix-screen";
 
-export default HomeScreen;
+export default NumixScreen;
