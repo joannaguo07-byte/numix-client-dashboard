@@ -180,8 +180,16 @@ function useChat() {
 
 // ─── Panel (used inside the main layout) ─────────────────────────────────────
 
-export function NewAskPanel({ onBack }: { onBack?: () => void }) {
+export function NewAskPanel({ onBack, backLabel = "Home", initialPrompt }: { onBack?: () => void; backLabel?: string; initialPrompt?: string }) {
     const { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown } = useChat();
+    const initialPromptSent = useRef(false);
+
+    useEffect(() => {
+        if (initialPrompt && !initialPromptSent.current && !isLoading) {
+            initialPromptSent.current = true;
+            sendMessage(initialPrompt);
+        }
+    }, [initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function handleSuggestion(text: string) {
         setInput(text);
@@ -207,7 +215,7 @@ export function NewAskPanel({ onBack }: { onBack?: () => void }) {
                                 className="flex items-center gap-1.5 text-sm text-tertiary transition duration-100 ease-linear hover:text-secondary"
                             >
                                 <ChevronLeft className="size-4" aria-hidden />
-                                Home
+                                {backLabel}
                             </button>
                             <div className="h-5 w-px bg-border-secondary" />
                         </>

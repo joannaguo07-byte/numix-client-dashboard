@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { useAuth } from "@/providers/auth-provider";
 import {
     Bell01,
     Building01,
@@ -25,6 +26,7 @@ import {
     ChevronDown,
     Upload01,
     LinkExternal01,
+    LogOut01,
 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
@@ -59,7 +61,7 @@ const NAV_GROUPS: { label: string; items: { id: Section; label: string; icon: Re
         items: [
             { id: "company", label: "Company", icon: Building01 },
             { id: "team", label: "Team & Permissions", icon: Users01 },
-            { id: "integrations", label: "Integrations", icon: Link01 },
+            { id: "integrations", label: "Access", icon: Link01 },
             { id: "tax", label: "Tax & Compliance", icon: File01 },
             { id: "billing", label: "Billing & Plan", icon: CreditCard01 },
         ],
@@ -642,17 +644,23 @@ const INTEGRATION_GROUPS = [
     },
 ];
 
-function IntegrationsSection() {
+function IntegrationsSection({ onSetupComplete }: { onSetupComplete?: () => void }) {
     const defaultConnected = new Set(
         INTEGRATION_GROUPS.flatMap((g) => g.items.filter((i) => i.defaultConnected).map((i) => i.id)),
     );
     const [connected, setConnected] = useState<Set<string>>(defaultConnected);
     const [connecting, setConnecting] = useState<string | null>(null);
 
+    const totalAll = INTEGRATION_GROUPS.flatMap((g) => g.items).length;
+
     async function handleConnect(id: string) {
         setConnecting(id);
         await new Promise((r) => setTimeout(r, 1500));
-        setConnected((prev) => new Set([...prev, id]));
+        setConnected((prev) => {
+            const next = new Set([...prev, id]);
+            if (next.size === totalAll) onSetupComplete?.();
+            return next;
+        });
         setConnecting(null);
     }
 
@@ -661,12 +669,11 @@ function IntegrationsSection() {
     }
 
     const totalConnected = connected.size;
-    const totalAll = INTEGRATION_GROUPS.flatMap((g) => g.items).length;
 
     return (
         <div className="space-y-5">
             <SectionHeader
-                title="Integrations"
+                title="Access"
                 description="Connect your financial tools so your CPA has the access they need — no manual exports required."
             />
 
@@ -882,7 +889,7 @@ function BillingSection() {
                             "Quarterly payroll tax filings",
                             "R&D credit assessment",
                             "Unlimited accountant messages",
-                            "Up to 5 integrations",
+                            "Up to 5 access connections",
                             "3 dashboard users",
                             "Priority support",
                         ].map((item) => (
@@ -1011,8 +1018,13 @@ function HelpSection({ onMessageAccountant }: { onMessageAccountant?: () => void
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function SettingsScreen({ onBack }: { onBack: () => void }) {
+export function SettingsScreen({ onBack, setupIncomplete, onSetupComplete }: { onBack: () => void; setupIncomplete?: boolean; onSetupComplete?: () => void }) {
+    const { signOut } = useAuth();
     const [activeSection, setActiveSection] = useState<Section>("profile");
+
+    async function onLogOut() {
+        await signOut();
+    }
 
     function renderSection() {
         switch (activeSection) {
@@ -1021,7 +1033,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
             case "security": return <SecuritySection />;
             case "company": return <CompanySection />;
             case "team": return <TeamSection />;
-            case "integrations": return <IntegrationsSection />;
+            case "integrations": return <IntegrationsSection onSetupComplete={onSetupComplete} />;
             case "tax": return <TaxSection />;
             case "billing": return <BillingSection />;
             case "help": return <HelpSection />;
@@ -1075,13 +1087,16 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
                                             aria-hidden
                                         />
                                         {item.label}
+                                        {item.id === "integrations" && setupIncomplete && (
+                                            <span className="ml-auto size-2 rounded-full bg-error-solid" />
+                                        )}
                                     </button>
                                 );
                             })}
                         </div>
                     ))}
 
-                    {/* Help — bottom of nav */}
+                    {/* Help & Log out — bottom of nav */}
                     <div className="mt-5 border-t border-secondary pt-4">
                         <button
                             type="button"
@@ -1101,6 +1116,14 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
                                 aria-hidden
                             />
                             Help & Support
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onLogOut}
+                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-error-primary transition duration-100 ease-linear hover:bg-error-primary"
+                        >
+                            <LogOut01 className="size-4 shrink-0" aria-hidden />
+                            Log out
                         </button>
                     </div>
                 </nav>
