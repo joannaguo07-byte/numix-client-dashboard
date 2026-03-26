@@ -21,10 +21,7 @@ import {
     FileCheck02,
     InfoCircle,
     LineChartUp01,
-    Mail01,
-    Phone01,
     Plus,
-    ReceiptCheck,
     Stars01,
     Trash01,
     Upload01,
@@ -53,11 +50,10 @@ import { cx } from "@/utils/cx";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type TaxPage = "overview" | "filing" | "planning";
+export type TaxPage = "filing" | "planning";
 
 interface TaxScreenProps {
     page?: TaxPage;
-    onAddCompany?: () => void;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -75,10 +71,33 @@ const ESTIMATED_PAYMENTS = [
     { quarter: "Q4", due: "Jan 15, 2025", amount: "$4,200", status: "upcoming" as const },
 ];
 
-const DEADLINES = [
-    { date: "Sep 15, 2024", description: "Q3 estimated tax payment", type: "Payment", status: "upcoming" as const },
-    { date: "Oct 15, 2024", description: "Extended individual return deadline", type: "Filing", status: "upcoming" as const },
-    { date: "Jan 15, 2025", description: "Q4 estimated tax payment", type: "Payment", status: "upcoming" as const },
+type CreditStatus = "claimed" | "eligible" | "exploring" | "not-eligible";
+
+const CREDIT_STATUS_CONFIG = {
+    "claimed": { label: "Claimed", color: "text-success-primary", dot: "bg-fg-success-primary" },
+    "eligible": { label: "Eligible", color: "text-brand-primary", dot: "bg-fg-brand-primary" },
+    "exploring": { label: "Exploring", color: "text-warning-primary", dot: "bg-fg-warning-primary" },
+    "not-eligible": { label: "Not eligible", color: "text-quaternary", dot: "bg-fg-quaternary" },
+};
+
+const CREDIT_CATEGORY_ORDER = ["Innovation & R&D", "Employee Benefits", "Accessibility & Facilities"] as const;
+
+const CREDIT_CATEGORIES = {
+    "Innovation & R&D": { border: "border-l-purple-500", dot: "bg-purple-500" },
+    "Employee Benefits": { border: "border-l-emerald-500", dot: "bg-emerald-500" },
+    "Accessibility & Facilities": { border: "border-l-blue-500", dot: "bg-blue-500" },
+};
+
+const TAX_CREDITS = [
+    { id: "rd", name: "R&D Tax Credits", code: "IRC §41", creditStatus: "claimed" as CreditStatus, amount: "$3,850", description: "Credit for increasing research activities", category: "Innovation & R&D" as const },
+    { id: "manufacturing", name: "Advanced Manufacturing Production Credit", code: "IRC §45X", creditStatus: "exploring" as CreditStatus, amount: "$2,400", description: "Credit for production of clean energy components", category: "Innovation & R&D" as const },
+    { id: "family-leave", name: "Employer Credit for Paid Family and Medical Leave", code: "§45S", creditStatus: "eligible" as CreditStatus, amount: "$1,800", description: "Credit for employers providing paid family & medical leave", category: "Employee Benefits" as const },
+    { id: "retirement-startup", name: "Small Employer Retirement Plan Startup Cost Credit", code: "SECURE 2.0", creditStatus: "eligible" as CreditStatus, amount: "$1,500", description: "Credit for starting a qualified retirement plan", category: "Employee Benefits" as const },
+    { id: "auto-enrollment", name: "Auto-Enrollment Credit", code: "SECURE 2.0", creditStatus: "eligible" as CreditStatus, amount: "$500", description: "Credit for auto-enrollment feature in retirement plans", category: "Employee Benefits" as const },
+    { id: "employer-contribution", name: "Employer Contribution Credit", code: "SECURE 2.0", creditStatus: "exploring" as CreditStatus, amount: "$2,100", description: "Credit for employer contributions to employee retirement plans", category: "Employee Benefits" as const },
+    { id: "healthcare", name: "Small Business Health Care Tax Credit", code: "", creditStatus: "not-eligible" as CreditStatus, amount: "—", description: "Credit for small employers providing health insurance", category: "Employee Benefits" as const },
+    { id: "disabled-access", name: "Disabled Access Credit", code: "IRC §44", creditStatus: "eligible" as CreditStatus, amount: "$750", description: "Credit for small businesses making accessibility improvements", category: "Accessibility & Facilities" as const },
+    { id: "child-care", name: "Employer-Provided Child Care Credit", code: "IRC §45F", creditStatus: "exploring" as CreditStatus, amount: "$3,200", description: "Credit for employer-provided child care facilities & services", category: "Accessibility & Facilities" as const },
 ];
 
 const RD_BREAKDOWN = [
@@ -177,162 +196,18 @@ function CompletedStepSummary({ stepId, stepNumber, editContent }: { stepId: str
 }
 
 const PAGE_TITLES: Record<TaxPage, string> = {
-    overview: "Tax Overview",
     filing: "Tax Filing",
     planning: "Tax Planning",
 };
 
 const PAGE_ICONS: Record<TaxPage, React.FC<React.SVGProps<SVGSVGElement>>> = {
-    overview: BarChartSquare02,
     filing: FileCheck02,
     planning: LineChartUp01,
 };
 
 // ─── Page content components ─────────────────────────────────────────────────
 
-function TaxOverviewPage({ year, onAddCompany }: { year: string; onAddCompany?: () => void }) {
-    return (
-        <div className="flex gap-4">
-            {/* Left — main card */}
-            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-secondary bg-primary">
-                {/* Title banner */}
-                <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
-                    <div className="flex items-center gap-3">
-                        <div>
-                            <h3 className="text-sm font-semibold text-primary">Acme Technologies Inc.</h3>
-                            <p className="text-xs text-tertiary">S-Corporation &middot; EIN 82-1234567 &middot; {year}</p>
-                        </div>
-                        <BadgeWithDot color="success" size="sm" type="pill-color">Active</BadgeWithDot>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-tertiary">
-                        <Clock className="size-3.5" />
-                        Updated 2 hrs ago
-                    </div>
-                </div>
 
-                {/* Content sections */}
-                <div className="divide-y divide-secondary">
-                    {/* Company Information */}
-                    <div className="px-6 py-5">
-                        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-tertiary">Company Information</h3>
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-                            <div>
-                                <p className="text-xs text-tertiary">Company Name</p>
-                                <p className="text-sm font-medium text-primary">Acme Technologies Inc.</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">EIN</p>
-                                <p className="font-mono text-sm text-primary">82-1234567</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">Entity Type</p>
-                                <div className="mt-0.5">
-                                    <Badge color="brand" size="sm" type="pill-color">S-Corp</Badge>
-                                </div>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">State of Formation</p>
-                                <p className="text-sm font-medium text-primary">Delaware</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Filing Details */}
-                    <div className="px-6 py-5">
-                        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-tertiary">Filing Details</h3>
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-                            <div>
-                                <p className="text-xs text-tertiary">Fiscal Year</p>
-                                <p className="text-sm font-medium text-primary">Calendar (Jan–Dec)</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">Filing Status</p>
-                                <div className="mt-0.5">
-                                    <BadgeWithDot color="success" size="sm" type="pill-color">Active</BadgeWithDot>
-                                </div>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">Tax Year</p>
-                                <p className="text-sm font-medium text-primary">{year}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-tertiary">Form Type</p>
-                                <p className="text-sm font-medium text-primary">1120-S</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Contact Information */}
-                    <div className="px-6 py-5">
-                        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-tertiary">Contact Information</h3>
-                        <div className="flex items-center gap-6">
-                            <div className="flex items-center gap-2">
-                                <Mail01 className="size-4 text-fg-quaternary" />
-                                <span className="text-sm text-primary">finance@acmetech.com</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Phone01 className="size-4 text-fg-quaternary" />
-                                <span className="text-sm text-primary">(555) 012-3456</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Right column */}
-            <div className="w-64 shrink-0 space-y-4 self-start">
-                {/* Add company – AI suggestion card */}
-                <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
-                    <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
-                    <p className="text-xs text-tertiary">
-                        Need to manage multiple companies? I can help you set one up in a few steps.
-                    </p>
-                    <button type="button" onClick={onAddCompany} className="mt-2 text-xs font-semibold text-brand-secondary hover:underline">
-                        Add another company
-                    </button>
-                </div>
-
-                {/* Deadlines card */}
-                <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
-                <div className="px-4 pt-3 pb-1">
-                    <div className="flex items-center gap-2">
-                        <Calendar className="size-3.5 text-fg-brand-primary" />
-                        <h3 className="text-sm font-semibold text-brand-secondary">Deadlines</h3>
-                    </div>
-                </div>
-                <div className="space-y-2 p-3">
-                    {DEADLINES.map((deadline, i) => (
-                        <div
-                            key={i}
-                            className={cx(
-                                "rounded-lg border-l-[3px] py-2.5 pr-3 pl-3",
-                                deadline.type === "Filing"
-                                    ? "border-l-purple-500 bg-purple-50"
-                                    : "border-l-pink-500 bg-pink-50",
-                            )}
-                        >
-                            <p className="text-xs font-medium text-primary">{deadline.description}</p>
-                            <div className="mt-1.5 flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                    <Clock className="size-3 text-fg-quaternary" />
-                                    <span className="text-[11px] font-medium text-secondary">{deadline.date}</span>
-                                </div>
-                                <Badge color={deadline.type === "Filing" ? "purple" : "pink"} size="sm" type="pill-color">
-                                    {deadline.type}
-                                </Badge>
-                            </div>
-                        </div>
-                    ))}
-                    {DEADLINES.length === 0 && (
-                        <p className="p-2 text-center text-xs text-tertiary">No upcoming deadlines.</p>
-                    )}
-                </div>
-                </div>
-
-            </div>
-        </div>
-    );
-}
 
 const CHECKLIST_ITEMS = [
     {
@@ -799,20 +674,40 @@ function TaxFilingPage({ onOpenWizard }: { onOpenWizard: () => void }) {
     );
 }
 
+type StrategyStatus = "not-started" | "in-progress" | "done";
+
 const SAVING_STRATEGIES = [
-    { name: "Mortgage Refinancing", category: "Long term saving", saving: "$351,049", deadline: "Dec. 31, 2024" },
-    { name: "Health Savings Account (HSA)", category: "Tax saving", saving: "$1,992", deadline: "Apr. 15, 2024" },
-    { name: "S-Corporation Election", category: "Tax saving", saving: "$1,253", deadline: "Dec. 31, 2024" },
-    { name: "Backdoor Roth IRA", category: "Long term saving", saving: "$7,000", deadline: "April. 15, 2025" },
+    { id: "s1", name: "Pay bonuses before year-end", description: "Deduct bonus payments to reduce taxable income for the current year", impact: "$12,500", deadline: "Before Dec 31", category: "Cash & Expense Timing" as const, status: "not-started" as StrategyStatus },
+    { id: "s2", name: "Accelerate business expenses", description: "Prepay deductible expenses to shift deductions into the current tax year", impact: "$8,200", deadline: "Before Dec 31", category: "Cash & Expense Timing" as const, status: "in-progress" as StrategyStatus },
+    { id: "s3", name: "Prepay vendors or software", description: "Pay upcoming vendor invoices or annual software licenses early", impact: "$4,800", deadline: "Before Dec 31", category: "Cash & Expense Timing" as const, status: "not-started" as StrategyStatus },
+    { id: "s4", name: "Write off bad debt", description: "Deduct uncollectible accounts receivable as a business loss", impact: "$3,100", deadline: "Before Dec 31", category: "Cash & Expense Timing" as const, status: "done" as StrategyStatus },
+    { id: "s5", name: "Purchase equipment (Section 179)", description: "Deduct the full cost of qualifying equipment to reduce taxable income", impact: "$45,000", deadline: "Before Dec 31", category: "Investments & Assets" as const, status: "not-started" as StrategyStatus },
+    { id: "s6", name: "Invest in R&D projects", description: "Qualify for R&D tax credits by funding research and development activities", impact: "$18,750", deadline: "Ongoing", category: "Investments & Assets" as const, status: "in-progress" as StrategyStatus },
+    { id: "s7", name: "Capitalize vs expense optimization", description: "Review asset classifications to maximize current-year deductions", impact: "$6,400", deadline: "Before Dec 31", category: "Investments & Assets" as const, status: "not-started" as StrategyStatus },
+    { id: "s8", name: "Optimize owner compensation", description: "Balance salary and distributions to minimize self-employment tax", impact: "$9,200", deadline: "Before Dec 31", category: "Entity & Compensation" as const, status: "in-progress" as StrategyStatus },
+    { id: "s9", name: "Evaluate S-Corp election", description: "Elect S-Corp status to reduce self-employment taxes on business income", impact: "$14,300", deadline: "Mar 15, 2025", category: "Entity & Compensation" as const, status: "not-started" as StrategyStatus },
+    { id: "s10", name: "Adjust payroll structure", description: "Restructure payroll to optimize tax withholding and employer deductions", impact: "$5,600", deadline: "Before Dec 31", category: "Entity & Compensation" as const, status: "not-started" as StrategyStatus },
 ];
 
-const TAX_GOALS = ["Mortgage Refinancing", "Health Savings Account (HSA)", "S-Corporation Election"];
+const STRATEGY_CATEGORY_ORDER = ["Cash & Expense Timing", "Investments & Assets", "Entity & Compensation"] as const;
+
+const STRATEGY_CATEGORIES = {
+    "Cash & Expense Timing": { color: "success" as const, border: "border-l-emerald-500", dot: "bg-emerald-500" },
+    "Investments & Assets": { color: "purple" as const, border: "border-l-purple-500", dot: "bg-purple-500" },
+    "Entity & Compensation": { color: "brand" as const, border: "border-l-blue-500", dot: "bg-blue-500" },
+};
+
+const STATUS_CONFIG = {
+    "not-started": { label: "Not started", color: "text-quaternary", bg: "bg-quaternary", dot: "bg-fg-quaternary" },
+    "in-progress": { label: "In progress", color: "text-warning-primary", bg: "bg-warning-secondary", dot: "bg-fg-warning-primary" },
+    "done": { label: "Done", color: "text-success-primary", bg: "bg-success-secondary", dot: "bg-fg-success-primary" },
+};
+
 
 const PAST_PLANS = [
-    { name: "2023 - Q2 Emily Grace's Tax Plan", strategies: 4, saving: "$4,150" },
-    { name: "2022 - Q4 Emily Grace's Tax Plan", strategies: 6, saving: "$1,600" },
-    { name: "2022 - Q3 Emily Grace's Tax Plan", strategies: 3, saving: "$4,150" },
-    { name: "2022 - Q2 Emily Grace's Tax Plan", strategies: 4, saving: "$1,600" },
+    { year: "2023", name: "2023 Business Tax Savings Plan", strategies: 6, completed: 6, saving: "$89,400" },
+    { year: "2022", name: "2022 Business Tax Savings Plan", strategies: 4, completed: 4, saving: "$52,300" },
+    { year: "2021", name: "2021 Business Tax Savings Plan", strategies: 3, completed: 3, saving: "$31,750" },
 ];
 
 const RD_EXPENSES = [
@@ -833,6 +728,7 @@ const RD_EXPENSES = [
 const TOTAL_EXPENSE_ITEMS = RD_EXPENSES.reduce((sum, g) => sum + g.items.length, 0);
 
 function TaxPlanningPage() {
+    const [selectedCredit, setSelectedCredit] = useState<string | null>(null);
     const [confirmedExpenses, setConfirmedExpenses] = useState<Set<string>>(new Set());
     const [showLiabilityModal, setShowLiabilityModal] = useState(false);
     const [signature, setSignature] = useState("");
@@ -859,8 +755,8 @@ function TaxPlanningPage() {
                     size="sm"
                     type="underline"
                     items={[
-                        { id: "expenses", label: "Expenses" },
-                        { id: "rd-credits", label: "R&D Credits" },
+                        { id: "expenses", label: "Create Savings" },
+                        { id: "credits", label: "Capture Savings" },
                     ]}
                 >
                     {(item) => (
@@ -870,286 +766,453 @@ function TaxPlanningPage() {
                     )}
                 </Tabs.List>
 
-                {/* Expenses tab */}
+                {/* Create Savings tab */}
                 <Tabs.Panel id="expenses" className="pt-5">
+                    <p className="mb-4 text-sm text-tertiary">Actions you take during the year to reduce your future tax bill.</p>
                     <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
                         {/* Blue banner header */}
                         <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
-                            <div>
-                                <h3 className="text-sm font-semibold text-primary">Tax Planning</h3>
-                                <p className="text-xs text-tertiary">2024 - Q4 Emily Grace&apos;s Tax Plan</p>
-                            </div>
+                            <h3 className="text-lg font-semibold text-primary">2024 Business Tax Savings Plan</h3>
                             <div className="flex items-center gap-4">
                                 <div className="text-right">
-                                    <p className="text-xs text-tertiary">BENNET, SHAY &amp; Co.</p>
-                                    <p className="text-sm font-medium text-primary">David Thompson, CPA</p>
+                                    <p className="text-xs text-tertiary">Tax Savings</p>
+                                    <div className="mt-0.5 flex items-baseline gap-2">
+                                        <span className="text-2xl font-bold tabular-nums tracking-tight text-success-primary">$3,100</span>
+                                        <span className="text-sm text-tertiary">/ $127,850</span>
+                                    </div>
+                                    <div className="mt-1.5 flex h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
+                                        <div className="rounded-full bg-success-solid" style={{ width: `${(3100 / 127850) * 100}%` }} />
+                                    </div>
                                 </div>
-                                <Button color="secondary" size="sm">Schedule an appointment</Button>
                             </div>
                         </div>
 
                         <div className="divide-y divide-secondary">
-                            {/* Hero savings row */}
-                            <div className="flex items-center justify-between px-6 py-5">
-                                <div>
-                                    <p className="text-xs text-tertiary">Your Estimated Total Financial Savings for 2024</p>
-                                    <p className="mt-1 text-3xl font-semibold tracking-tight text-success-primary">$354,294</p>
-                                    <button type="button" className="mt-1 text-xs font-medium text-brand-primary hover:underline">
-                                        How is this number calculated?
-                                    </button>
-                                </div>
-                                <Button color="secondary" size="sm">View income projection</Button>
-                            </div>
-
-                            {/* Tax Goals */}
-                            <div className="px-6 py-5">
-                                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Your Tax Goals</h3>
-                                <div className="flex flex-wrap gap-2">
-                                    {TAX_GOALS.map((goal) => (
-                                        <Badge key={goal} color="brand" size="sm" type="pill-color">{goal}</Badge>
-                                    ))}
-                                </div>
-                            </div>
 
                             {/* Saving Strategies */}
                             <div className="px-6 py-5">
-                                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Your Saving Strategies</h3>
-                                <div className="divide-y divide-secondary rounded-lg border border-secondary">
-                                    {SAVING_STRATEGIES.map((strategy) => (
-                                        <div key={strategy.name} className="flex items-center gap-4 px-4 py-3">
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <p className="text-sm font-medium text-primary">{strategy.name}</p>
-                                                    <InfoCircle className="size-3.5 text-fg-quaternary" />
+                                {/* Summary bar */}
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Your Saving Strategies</h3>
+                                    <div className="flex items-center gap-3 text-xs text-tertiary">
+                                        <span>{SAVING_STRATEGIES.length} strategies</span>
+                                        <span className="text-quaternary">&middot;</span>
+                                        <span>{STRATEGY_CATEGORY_ORDER.length} categories</span>
+                                    </div>
+                                </div>
+
+                                {/* Grouped strategies */}
+                                <div className="space-y-5">
+                                    {STRATEGY_CATEGORY_ORDER.map((category) => {
+                                        const catConfig = STRATEGY_CATEGORIES[category];
+                                        const strategies = SAVING_STRATEGIES.filter((s) => s.category === category);
+                                        return (
+                                            <div key={category}>
+                                                {/* Category header */}
+                                                <div className="mb-3 flex items-center gap-2.5">
+                                                    <div className={cx("size-2.5 rounded-full", catConfig.dot)} />
+                                                    <h4 className="text-lg font-semibold text-primary">{category}</h4>
+                                                    <span className="text-xs text-tertiary">{strategies.length} strategies</span>
                                                 </div>
-                                                <p className="text-xs text-tertiary">{strategy.category}</p>
+                                                {/* Strategy rows */}
+                                                <div className="overflow-hidden rounded-lg border border-secondary">
+                                                    {strategies.map((strategy, i) => {
+                                                        const statusCfg = STATUS_CONFIG[strategy.status];
+                                                        return (
+                                                            <div
+                                                                key={strategy.id}
+                                                                className={cx(
+                                                                    "flex items-center gap-4 border-l-[3px] px-4 py-3.5",
+                                                                    catConfig.border,
+                                                                    i < strategies.length - 1 && "border-b border-secondary",
+                                                                )}
+                                                            >
+                                                                {/* Status dot */}
+                                                                <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+                                                                    <div className={cx("size-2.5 rounded-full", statusCfg.dot)} />
+                                                                    <span className={cx("text-[10px] font-medium leading-none", statusCfg.color)}>{statusCfg.label}</span>
+                                                                </div>
+
+                                                                {/* Title & description */}
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-sm font-medium text-primary">{strategy.name}</p>
+                                                                    <p className="mt-0.5 text-xs text-tertiary">{strategy.description}</p>
+                                                                </div>
+
+                                                                {/* Impact pill */}
+                                                                <div className={cx(
+                                                                    "shrink-0 rounded-lg px-3 py-1.5 text-center",
+                                                                    strategy.status === "not-started"
+                                                                        ? "bg-secondary"
+                                                                        : "bg-success-secondary",
+                                                                )}>
+                                                                    <p className={cx(
+                                                                        "text-sm font-bold tabular-nums",
+                                                                        strategy.status === "not-started" ? "text-quaternary" : "text-success-primary",
+                                                                    )}>{strategy.impact}</p>
+                                                                    <p className={cx(
+                                                                        "text-[10px] font-medium",
+                                                                        strategy.status === "not-started" ? "text-quaternary" : "text-success-primary/70",
+                                                                    )}>tax savings</p>
+                                                                </div>
+
+                                                                {/* Deadline */}
+                                                                <div className="shrink-0 text-right">
+                                                                    <p className="text-sm text-primary">{strategy.deadline}</p>
+                                                                    <p className="text-[11px] text-tertiary">Deadline</p>
+                                                                </div>
+
+                                                                {/* CTA */}
+                                                                <Button color="secondary" size="sm" iconLeading={Stars01} className="shrink-0">
+                                                                    How to do this
+                                                                </Button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
-                                            <p className="text-sm font-semibold tabular-nums text-primary">{strategy.saving}</p>
-                                            <div className="text-right">
-                                                <p className="text-sm text-primary">{strategy.deadline}</p>
-                                                <p className="text-xs text-tertiary">Deadline</p>
-                                            </div>
-                                            <button type="button" className="flex items-center gap-1 text-xs font-medium text-brand-primary hover:underline">
-                                                <Stars01 className="size-3.5" />
-                                                why?
-                                            </button>
-                                            <ChevronRight className="size-4 text-fg-quaternary" />
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             {/* Past Plans */}
                             <div className="px-6 py-5">
-                                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Past Plans</h3>
-                                <p className="mb-3 text-sm font-medium text-primary">2022 - 2023 Tax Plan</p>
-                                <div className="overflow-hidden rounded-lg border border-secondary">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b border-secondary bg-secondary">
-                                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Tax plan</th>
-                                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Finished strategies</th>
-                                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Total financial saving</th>
-                                                <th className="w-10 px-4 py-2.5" />
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {PAST_PLANS.map((plan) => (
-                                                <tr key={plan.name} className="border-b border-secondary last:border-b-0">
-                                                    <td className="px-4 py-2.5">
-                                                        <button type="button" className="text-sm font-medium text-brand-primary hover:underline">{plan.name}</button>
-                                                    </td>
-                                                    <td className="px-4 py-2.5 text-primary">{plan.strategies}</td>
-                                                    <td className="px-4 py-2.5 font-medium tabular-nums text-primary">{plan.saving}</td>
-                                                    <td className="px-4 py-2.5">
-                                                        <ChevronRight className="size-4 text-fg-quaternary" />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                <div className="mb-3 flex items-center justify-between">
+                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Past Plans</h3>
+                                    <p className="text-xs text-tertiary">Total saved: <span className="font-semibold text-success-primary">$173,450</span></p>
+                                </div>
+                                <div className="space-y-2">
+                                    {PAST_PLANS.map((plan) => (
+                                        <button
+                                            key={plan.name}
+                                            type="button"
+                                            className="flex w-full items-center gap-4 rounded-lg border border-secondary px-4 py-3 text-left transition hover:border-brand/40 hover:bg-brand-primary_alt/30"
+                                        >
+                                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                                                <span className="text-xs font-bold text-tertiary">{plan.year}</span>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-primary">{plan.name}</p>
+                                                <p className="mt-0.5 text-xs text-tertiary">{plan.completed}/{plan.strategies} strategies completed</p>
+                                            </div>
+                                            <div className="shrink-0 rounded-lg bg-success-secondary px-2.5 py-1 text-center">
+                                                <p className="text-sm font-bold tabular-nums text-success-primary">{plan.saving}</p>
+                                                <p className="text-[10px] font-medium text-success-primary/70">saved</p>
+                                            </div>
+                                            <ChevronRight className="size-4 shrink-0 text-fg-quaternary" />
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>
                     </div>
                 </Tabs.Panel>
 
-                {/* R&D Credits tab */}
-                <Tabs.Panel id="rd-credits" className="pt-5">
-                    <div className="flex gap-4">
-                        {/* Main content */}
-                        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-secondary bg-primary">
-                            {/* Blue banner */}
+                {/* Capture Savings tab */}
+                <Tabs.Panel id="credits" className="pt-5">
+                    <p className="mb-4 text-sm text-tertiary">Existing tax credits and incentives you qualify for and claim.</p>
+                    {selectedCredit === null ? (
+                        /* ── Credits list view ── */
+                        <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
+                            {/* Banner header */}
                             <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
-                                <div className="flex items-center gap-3">
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-primary">R&D Tax Credits</h3>
-                                        <p className="text-xs text-tertiary">Acme Technologies Inc. &middot; 2024</p>
+                                <h3 className="text-lg font-semibold text-primary">2024 Tax Credits</h3>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <p className="text-xs text-tertiary">Credits Captured</p>
+                                        <div className="mt-0.5 flex items-baseline gap-2">
+                                            <span className="text-2xl font-bold tabular-nums tracking-tight text-success-primary">$3,850</span>
+                                            <span className="text-sm text-tertiary">/ $16,100</span>
+                                        </div>
+                                        <div className="mt-1.5 flex h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
+                                            <div className="rounded-full bg-success-solid" style={{ width: `${(3850 / 16100) * 100}%` }} />
+                                        </div>
                                     </div>
-                                    <BadgeWithDot color="brand" size="sm" type="pill-color">In Progress</BadgeWithDot>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-xs text-tertiary">
-                                    <Clock className="size-3.5" />
-                                    Updated 2 hrs ago
                                 </div>
                             </div>
 
                             <div className="divide-y divide-secondary">
-                                {/* Credit amount hero */}
-                                <div className="flex items-center justify-between px-6 py-5">
-                                    <div>
-                                        <p className="text-xs text-tertiary">Potential R&D Tax Credit</p>
-                                        <p className="mt-1 text-3xl font-semibold tracking-tight text-success-primary">$3,850</p>
-                                        <button type="button" className="mt-1 text-xs font-medium text-brand-primary hover:underline">
-                                            How is this calculated?
-                                        </button>
-                                    </div>
-                                    <Button color="primary" size="sm" iconTrailing={ChevronRight}>Start claim</Button>
-                                </div>
-
-                                {/* Breakdown */}
+                                {/* Credits grouped by category */}
                                 <div className="px-6 py-5">
-                                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Credit Breakdown</h3>
-                                    <div className="divide-y divide-secondary rounded-lg border border-secondary">
-                                        {RD_BREAKDOWN.map((item) => (
-                                            <div key={item.category} className="flex items-center justify-between px-4 py-3">
-                                                <p className="text-sm text-primary">{item.category}</p>
-                                                <p className="text-sm font-medium tabular-nums text-primary">{item.amount}</p>
-                                            </div>
-                                        ))}
-                                        <div className="flex items-center justify-between bg-secondary px-4 py-3">
-                                            <p className="text-sm font-semibold text-primary">Total</p>
-                                            <p className="text-sm font-semibold tabular-nums text-primary">$3,850</p>
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Available Credits</h3>
+                                        <div className="flex items-center gap-3 text-xs text-tertiary">
+                                            <span>{TAX_CREDITS.length} credits</span>
+                                            <span className="text-quaternary">&middot;</span>
+                                            <span>{TAX_CREDITS.filter((c) => c.creditStatus === "claimed").length} claimed</span>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Confirm Qualifying Expenses */}
-                                <div className="px-6 py-5">
-                                    <div className="mb-3 flex items-center justify-between">
-                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Confirm Qualifying Expenses</h3>
-                                        <span className="text-xs text-tertiary">{confirmedExpenses.size} of {TOTAL_EXPENSE_ITEMS} confirmed</span>
+                                    <div className="space-y-5">
+                                        {CREDIT_CATEGORY_ORDER.map((category) => {
+                                            const catConfig = CREDIT_CATEGORIES[category];
+                                            const credits = TAX_CREDITS.filter((c) => c.category === category);
+                                            return (
+                                                <div key={category}>
+                                                    <div className="mb-3 flex items-center gap-2.5">
+                                                        <div className={cx("size-2.5 rounded-full", catConfig.dot)} />
+                                                        <h4 className="text-lg font-semibold text-primary">{category}</h4>
+                                                        <span className="text-xs text-tertiary">{credits.length} credits</span>
+                                                    </div>
+                                                    <div className="overflow-hidden rounded-lg border border-secondary">
+                                                        {credits.map((credit, i) => {
+                                                            const statusCfg = CREDIT_STATUS_CONFIG[credit.creditStatus];
+                                                            return (
+                                                                <button
+                                                                    key={credit.id}
+                                                                    type="button"
+                                                                    className={cx(
+                                                                        "flex w-full items-center gap-4 border-l-[3px] px-4 py-3.5 text-left transition hover:bg-secondary/50",
+                                                                        catConfig.border,
+                                                                        i < credits.length - 1 && "border-b border-secondary",
+                                                                    )}
+                                                                    onClick={() => credit.id === "rd" ? setSelectedCredit("rd") : undefined}
+                                                                >
+                                                                    {/* Status */}
+                                                                    <div className="flex w-20 shrink-0 flex-col items-center gap-1">
+                                                                        <div className={cx("size-2.5 rounded-full", statusCfg.dot)} />
+                                                                        <span className={cx("text-[10px] font-medium leading-none", statusCfg.color)}>{statusCfg.label}</span>
+                                                                    </div>
+
+                                                                    {/* Name & description */}
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <p className="text-sm font-medium text-primary">{credit.name}</p>
+                                                                            {credit.code && (
+                                                                                <span className="shrink-0 rounded-md border border-secondary px-1.5 py-0.5 text-[11px] text-tertiary">{credit.code}</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="mt-0.5 text-xs text-tertiary">{credit.description}</p>
+                                                                    </div>
+
+                                                                    {/* Amount pill */}
+                                                                    {credit.amount !== "—" ? (
+                                                                        <div className={cx(
+                                                                            "shrink-0 rounded-lg px-3 py-1.5 text-center",
+                                                                            credit.creditStatus === "claimed" ? "bg-success-secondary" :
+                                                                            credit.creditStatus === "not-eligible" ? "bg-secondary" : "bg-brand-primary_alt",
+                                                                        )}>
+                                                                            <p className={cx(
+                                                                                "text-sm font-bold tabular-nums",
+                                                                                credit.creditStatus === "claimed" ? "text-success-primary" :
+                                                                                credit.creditStatus === "not-eligible" ? "text-quaternary" : "text-brand-primary",
+                                                                            )}>{credit.amount}</p>
+                                                                            <p className={cx(
+                                                                                "text-[10px] font-medium",
+                                                                                credit.creditStatus === "claimed" ? "text-success-primary/70" :
+                                                                                credit.creditStatus === "not-eligible" ? "text-quaternary" : "text-brand-primary/70",
+                                                                            )}>{credit.creditStatus === "claimed" ? "claimed" : "potential"}</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="shrink-0 rounded-lg bg-secondary px-3 py-1.5 text-center">
+                                                                            <p className="text-sm font-bold text-quaternary">—</p>
+                                                                            <p className="text-[10px] font-medium text-quaternary">N/A</p>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* CTA */}
+                                                                    <Button color="secondary" size="sm" iconLeading={credit.creditStatus === "claimed" ? CheckCircle : Stars01} className="shrink-0">
+                                                                        {credit.creditStatus === "claimed" ? "View details" : credit.creditStatus === "not-eligible" ? "Learn more" : "Start claim"}
+                                                                    </Button>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <div className="divide-y divide-secondary rounded-lg border border-secondary">
-                                        {RD_EXPENSES.map((group) => (
-                                            <div key={group.category} className="px-4 py-3">
-                                                <p className="mb-2 text-xs font-medium text-tertiary">{group.category}</p>
-                                                <div className="space-y-2">
-                                                    {group.items.map((item) => (
-                                                        <label key={item.id} className="flex cursor-pointer items-center gap-3">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={confirmedExpenses.has(item.id)}
-                                                                onChange={() => toggleExpense(item.id)}
-                                                                className="size-4 rounded border-secondary text-brand-solid focus:ring-brand-solid"
-                                                            />
-                                                            <span className="flex-1 text-sm text-primary">{item.name}</span>
-                                                            <span className="text-sm tabular-nums font-medium text-primary">{item.amount}</span>
-                                                        </label>
-                                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* ── R&D Credit detail view ── */
+                        <>
+                            <button
+                                type="button"
+                                className="mb-4 flex items-center gap-1.5 text-sm font-medium text-brand-primary hover:underline"
+                                onClick={() => setSelectedCredit(null)}
+                            >
+                                <ArrowLeft className="size-4" />
+                                Back to Credits
+                            </button>
+                            <div className="flex gap-4">
+                                {/* Main content */}
+                                <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-secondary bg-primary">
+                                    {/* Blue banner */}
+                                    <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-primary">R&D Tax Credits</h3>
+                                                <p className="text-xs text-tertiary">Acme Technologies Inc. &middot; 2024</p>
+                                            </div>
+                                            <BadgeWithDot color="brand" size="sm" type="pill-color">In Progress</BadgeWithDot>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-xs text-tertiary">
+                                            <Clock className="size-3.5" />
+                                            Updated 2 hrs ago
+                                        </div>
+                                    </div>
+
+                                    <div className="divide-y divide-secondary">
+                                        {/* Credit amount hero */}
+                                        <div className="flex items-center justify-between px-6 py-5">
+                                            <div>
+                                                <p className="text-xs text-tertiary">Potential R&D Tax Credit</p>
+                                                <p className="mt-1 text-3xl font-semibold tracking-tight text-success-primary">$3,850</p>
+                                                <button type="button" className="mt-1 text-xs font-medium text-brand-primary hover:underline">
+                                                    How is this calculated?
+                                                </button>
+                                            </div>
+                                            <Button color="primary" size="sm" iconTrailing={ChevronRight}>Start claim</Button>
+                                        </div>
+
+                                        {/* Breakdown */}
+                                        <div className="px-6 py-5">
+                                            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Credit Breakdown</h3>
+                                            <div className="divide-y divide-secondary rounded-lg border border-secondary">
+                                                {RD_BREAKDOWN.map((item) => (
+                                                    <div key={item.category} className="flex items-center justify-between px-4 py-3">
+                                                        <p className="text-sm text-primary">{item.category}</p>
+                                                        <p className="text-sm font-medium tabular-nums text-primary">{item.amount}</p>
+                                                    </div>
+                                                ))}
+                                                <div className="flex items-center justify-between bg-secondary px-4 py-3">
+                                                    <p className="text-sm font-semibold text-primary">Total</p>
+                                                    <p className="text-sm font-semibold tabular-nums text-primary">$3,850</p>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                    {/* AI Help button */}
-                                    <div className="mt-4">
-                                        <Button
-                                            color="secondary"
-                                            size="sm"
-                                            iconLeading={Stars01}
-                                            isDisabled={!hasConfirmed}
-                                            onClick={() => setShowLiabilityModal(true)}
-                                        >
-                                            Numix AI Help
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right sidebar */}
-                        <div className="w-64 shrink-0 space-y-4 self-start">
-                            <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
-                                <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
-                                <p className="text-xs text-tertiary">
-                                    Based on your qualifying expenses, you may be eligible for additional state-level R&D credits worth up to $1,200.
-                                </p>
-                                <button type="button" className="mt-2 text-xs font-semibold text-brand-secondary hover:underline">
-                                    Explore state credits
-                                </button>
-                            </div>
-                            <div className="rounded-xl border border-secondary bg-primary p-5">
-                                <div className="flex items-center gap-2">
-                                    <Calendar className="size-4 text-fg-quaternary" />
-                                    <p className="text-xs text-tertiary">Filing Deadline</p>
-                                </div>
-                                <p className="mt-1 text-sm font-semibold text-primary">Mar 15, 2025</p>
-                            </div>
-                            <div className="rounded-xl border border-secondary bg-primary p-5">
-                                <div className="flex items-center gap-2">
-                                    <Clock className="size-4 text-fg-quaternary" />
-                                    <p className="text-xs text-tertiary">Last Updated</p>
-                                </div>
-                                <p className="mt-1 text-sm font-semibold text-primary">2 hours ago</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Liability Form Modal */}
-                    <ModalOverlay isOpen={showLiabilityModal} onOpenChange={setShowLiabilityModal}>
-                        <Modal>
-                            <Dialog>
-                                <div className="space-y-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex size-10 items-center justify-center rounded-full bg-warning-secondary">
-                                            <AlertCircle className="size-5 text-fg-warning-primary" />
                                         </div>
-                                        <h2 className="text-lg font-semibold text-primary">Liability Agreement</h2>
-                                    </div>
-                                    <div className="max-h-[240px] overflow-y-auto rounded-lg border border-secondary bg-secondary/50 p-4 text-sm leading-relaxed text-secondary">
-                                        <p className="mb-3">
-                                            By signing this agreement, you acknowledge that the AI-assisted R&D tax credit analysis
-                                            provided by Numix is for informational purposes and does not constitute tax advice.
-                                        </p>
-                                        <p className="mb-3">
-                                            You understand that: (1) The AI analysis is based on the expense data you have confirmed
-                                            and may not capture all qualifying activities; (2) Final determination of R&D credit
-                                            eligibility rests with the IRS and applicable state authorities; (3) Numix and its AI
-                                            systems are not liable for any discrepancies, penalties, or adjustments resulting from
-                                            the use of this analysis; (4) You are responsible for reviewing all AI-generated
-                                            recommendations with a qualified tax professional before filing.
-                                        </p>
-                                        <p>
-                                            This agreement is governed by the terms of your Numix service agreement. By signing below,
-                                            you confirm that you have read, understood, and agree to these terms.
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <label className="mb-1.5 block text-sm font-medium text-primary">Signature (type your full name)</label>
-                                        <input
-                                            type="text"
-                                            value={signature}
-                                            onChange={(e) => setSignature(e.target.value)}
-                                            placeholder="e.g. Olivia Rhye"
-                                            className="w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-quaternary focus:border-brand-solid focus:outline-none focus:ring-1 focus:ring-brand-solid"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-1.5 block text-sm font-medium text-primary">Date</label>
-                                        <input type="text" value={today} readOnly className="w-full rounded-lg border border-secondary bg-secondary/50 px-3 py-2 text-sm text-tertiary" />
-                                    </div>
-                                    <label className="flex cursor-pointer items-start gap-3">
-                                        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 size-4 rounded border-secondary text-brand-solid focus:ring-brand-solid" />
-                                        <span className="text-sm text-secondary">I have read and agree to the terms outlined above.</span>
-                                    </label>
-                                    <div className="flex justify-end gap-3">
-                                        <Button color="secondary" size="md" onClick={() => { setShowLiabilityModal(false); setSignature(""); setAgreed(false); }}>Cancel</Button>
-                                        <Button color="primary" size="md" isDisabled={!canSubmit} onClick={() => { setShowLiabilityModal(false); setSignature(""); setAgreed(false); }}>Sign & Submit</Button>
+
+                                        {/* Confirm Qualifying Expenses */}
+                                        <div className="px-6 py-5">
+                                            <div className="mb-3 flex items-center justify-between">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Confirm Qualifying Expenses</h3>
+                                                <span className="text-xs text-tertiary">{confirmedExpenses.size} of {TOTAL_EXPENSE_ITEMS} confirmed</span>
+                                            </div>
+                                            <div className="divide-y divide-secondary rounded-lg border border-secondary">
+                                                {RD_EXPENSES.map((group) => (
+                                                    <div key={group.category} className="px-4 py-3">
+                                                        <p className="mb-2 text-xs font-medium text-tertiary">{group.category}</p>
+                                                        <div className="space-y-2">
+                                                            {group.items.map((item) => (
+                                                                <label key={item.id} className="flex cursor-pointer items-center gap-3">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={confirmedExpenses.has(item.id)}
+                                                                        onChange={() => toggleExpense(item.id)}
+                                                                        className="size-4 rounded border-secondary text-brand-solid focus:ring-brand-solid"
+                                                                    />
+                                                                    <span className="flex-1 text-sm text-primary">{item.name}</span>
+                                                                    <span className="text-sm tabular-nums font-medium text-primary">{item.amount}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {/* AI Help button */}
+                                            <div className="mt-4">
+                                                <Button
+                                                    color="secondary"
+                                                    size="sm"
+                                                    iconLeading={Stars01}
+                                                    isDisabled={!hasConfirmed}
+                                                    onClick={() => setShowLiabilityModal(true)}
+                                                >
+                                                    Numix AI Help
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </Dialog>
-                        </Modal>
-                    </ModalOverlay>
+
+                                {/* Right sidebar */}
+                                <div className="w-64 shrink-0 space-y-4 self-start">
+                                    <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
+                                        <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
+                                        <p className="text-xs text-tertiary">
+                                            Based on your qualifying expenses, you may be eligible for additional state-level R&D credits worth up to $1,200.
+                                        </p>
+                                        <button type="button" className="mt-2 text-xs font-semibold text-brand-secondary hover:underline">
+                                            Explore state credits
+                                        </button>
+                                    </div>
+                                    <div className="rounded-xl border border-secondary bg-primary p-5">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="size-4 text-fg-quaternary" />
+                                            <p className="text-xs text-tertiary">Filing Deadline</p>
+                                        </div>
+                                        <p className="mt-1 text-sm font-semibold text-primary">Mar 15, 2025</p>
+                                    </div>
+                                    <div className="rounded-xl border border-secondary bg-primary p-5">
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="size-4 text-fg-quaternary" />
+                                            <p className="text-xs text-tertiary">Last Updated</p>
+                                        </div>
+                                        <p className="mt-1 text-sm font-semibold text-primary">2 hours ago</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Liability Form Modal */}
+                            <ModalOverlay isOpen={showLiabilityModal} onOpenChange={setShowLiabilityModal}>
+                                <Modal>
+                                    <Dialog>
+                                        <div className="space-y-5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex size-10 items-center justify-center rounded-full bg-warning-secondary">
+                                                    <AlertCircle className="size-5 text-fg-warning-primary" />
+                                                </div>
+                                                <h2 className="text-lg font-semibold text-primary">Liability Agreement</h2>
+                                            </div>
+                                            <div className="max-h-[240px] overflow-y-auto rounded-lg border border-secondary bg-secondary/50 p-4 text-sm leading-relaxed text-secondary">
+                                                <p className="mb-3">
+                                                    By signing this agreement, you acknowledge that the AI-assisted R&D tax credit analysis
+                                                    provided by Numix is for informational purposes and does not constitute tax advice.
+                                                </p>
+                                                <p className="mb-3">
+                                                    You understand that: (1) The AI analysis is based on the expense data you have confirmed
+                                                    and may not capture all qualifying activities; (2) Final determination of R&D credit
+                                                    eligibility rests with the IRS and applicable state authorities; (3) Numix and its AI
+                                                    systems are not liable for any discrepancies, penalties, or adjustments resulting from
+                                                    the use of this analysis; (4) You are responsible for reviewing all AI-generated
+                                                    recommendations with a qualified tax professional before filing.
+                                                </p>
+                                                <p>
+                                                    This agreement is governed by the terms of your Numix service agreement. By signing below,
+                                                    you confirm that you have read, understood, and agree to these terms.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium text-primary">Signature (type your full name)</label>
+                                                <input
+                                                    type="text"
+                                                    value={signature}
+                                                    onChange={(e) => setSignature(e.target.value)}
+                                                    placeholder="e.g. Olivia Rhye"
+                                                    className="w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-quaternary focus:border-brand-solid focus:outline-none focus:ring-1 focus:ring-brand-solid"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium text-primary">Date</label>
+                                                <input type="text" value={today} readOnly className="w-full rounded-lg border border-secondary bg-secondary/50 px-3 py-2 text-sm text-tertiary" />
+                                            </div>
+                                            <label className="flex cursor-pointer items-start gap-3">
+                                                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 size-4 rounded border-secondary text-brand-solid focus:ring-brand-solid" />
+                                                <span className="text-sm text-secondary">I have read and agree to the terms outlined above.</span>
+                                            </label>
+                                            <div className="flex justify-end gap-3">
+                                                <Button color="secondary" size="md" onClick={() => { setShowLiabilityModal(false); setSignature(""); setAgreed(false); }}>Cancel</Button>
+                                                <Button color="primary" size="md" isDisabled={!canSubmit} onClick={() => { setShowLiabilityModal(false); setSignature(""); setAgreed(false); }}>Sign & Submit</Button>
+                                            </div>
+                                        </div>
+                                    </Dialog>
+                                </Modal>
+                            </ModalOverlay>
+                        </>
+                    )}
                 </Tabs.Panel>
             </Tabs>
         </div>
@@ -1158,7 +1221,7 @@ function TaxPlanningPage() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function TaxScreen({ page = "overview", onAddCompany }: TaxScreenProps) {
+export function TaxScreen({ page = "filing" }: TaxScreenProps) {
     const [selectedYear, setSelectedYear] = useState("2024");
     const [filingWizardOpen, setFilingWizardOpen] = useState(false);
 
@@ -1199,7 +1262,6 @@ export function TaxScreen({ page = "overview", onAddCompany }: TaxScreenProps) {
 
             {/* ── Page content ─────────────────────────────────────────── */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
-                {page === "overview" && <TaxOverviewPage year={selectedYear} onAddCompany={onAddCompany} />}
                 {page === "filing" && <TaxFilingPage onOpenWizard={() => setFilingWizardOpen(true)} />}
                 {page === "planning" && <TaxPlanningPage />}
             </div>

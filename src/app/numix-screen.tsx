@@ -99,8 +99,7 @@ const navItems = [
         ],
     },
     {
-        label: "Tax", icon: ReceiptCheck, panelId: "tax-overview" as const, subItems: [
-            { label: "Tax Overview", panelId: "tax-overview" as const, icon: BarChartSquare02 },
+        label: "Tax", icon: ReceiptCheck, subItems: [
             { label: "Tax Filing", panelId: "tax-filing" as const, icon: FileCheck02 },
             { label: "Tax Planning", panelId: "tax-planning" as const, icon: LineChartUp01 },
         ],
@@ -190,6 +189,39 @@ const INITIAL_TASKS: Task[] = [
         channel: "SMS",
         action: "upload",
         completedDate: "Completed Feb 15",
+    },
+    {
+        id: "dl-1",
+        title: "Q3 Estimated Tax Payment",
+        taskNumber: "DEADLINE",
+        status: "waiting-you",
+        description: "Q3 estimated tax payment due Sep 15, 2024.",
+        dueDate: "Due Sep 15",
+        source: "Tax Calendar",
+        channel: "Workspace",
+        action: "confirm",
+    },
+    {
+        id: "dl-2",
+        title: "Extended Individual Return Deadline",
+        taskNumber: "DEADLINE",
+        status: "waiting-you",
+        description: "Extended individual return deadline is Oct 15, 2024.",
+        dueDate: "Due Oct 15",
+        source: "Tax Calendar",
+        channel: "Workspace",
+        action: "confirm",
+    },
+    {
+        id: "dl-3",
+        title: "Q4 Estimated Tax Payment",
+        taskNumber: "DEADLINE",
+        status: "waiting-you",
+        description: "Q4 estimated tax payment due Jan 15, 2025.",
+        dueDate: "Due Jan 15",
+        source: "Tax Calendar",
+        channel: "Workspace",
+        action: "confirm",
     },
 ];
 
@@ -690,7 +722,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
 // ─── Page shells ─────────────────────────────────────────────────────────────
 
-type MainPanel = "home" | "new-ask" | "conversation" | "status-overview" | "tax-overview" | "tax-filing" | "tax-planning" | "cfo-forecast" | "cfo-save-money" | "cfo-make-money" | "bk-ap" | "bk-ar" | "bk-transactions" | "bk-reports" | "documents";
+type MainPanel = "home" | "new-ask" | "conversation" | "status-overview" | "tax-filing" | "tax-planning" | "cfo-forecast" | "cfo-save-money" | "cfo-make-money" | "bk-ap" | "bk-ar" | "bk-transactions" | "bk-reports" | "documents";
 
 function StatusOverviewPage({ goToPanel }: { goToPanel: (panel: MainPanel) => void }) {
     return (
@@ -872,10 +904,10 @@ function PageShell({ title, description, children }: { title: string; descriptio
 export const NumixScreen = () => {
     const { user, loading: authLoading, signOut } = useAuth();
     const [showLogin, setShowLogin] = useState(() => {
-        if (typeof window === "undefined") return true;
+        if (typeof window === "undefined") return false;
         const step = new URLSearchParams(window.location.search).get("step");
-        if (step === "access" || step === "dashboard") return false;
-        return true;
+        if (step === "login") return true;
+        return false;
     });
     const [showIntegrations, setShowIntegrations] = useState(() => {
         if (typeof window === "undefined") return false;
@@ -883,14 +915,11 @@ export const NumixScreen = () => {
         return step === "access";
     });
 
-    // Sync showLogin with auth state
+    // Sync showLogin with auth state — only hide login when user logs in, never force it back
     useEffect(() => {
         if (authLoading) return;
         if (user) {
             setShowLogin(false);
-        } else {
-            setShowLogin(true);
-            setShowIntegrations(false);
         }
     }, [user, authLoading]);
     const [showSettings, setShowSettings] = useState(false);
@@ -902,13 +931,14 @@ export const NumixScreen = () => {
     const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
     const [mainPanel, setMainPanel] = useState<MainPanel>("home");
     const [activeConversation, setActiveConversation] = useState<{ id: string; title: string } | null>(null);
-    const [boardView, setBoardView] = useState<"list" | "board">("board");
+    const [boardView, setBoardView] = useState<"list" | "board">("list");
     const [statusExpanded, setStatusExpanded] = useState(true);
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [askInitialPrompt, setAskInitialPrompt] = useState<string | undefined>(undefined);
     const [askBackPanel, setAskBackPanel] = useState<MainPanel>("home");
     const [conversations, setConversations] = useState(recentConversations);
+
     const direction = useRef<1 | -1>(1);
 
     const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null;
@@ -1221,7 +1251,7 @@ export const NumixScreen = () => {
                         transition={slideTransition}
                         className="flex min-w-0 flex-1 overflow-hidden"
                     >
-                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "tax-overview" ? "Tax Overview" : askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : "Home"} initialPrompt={askInitialPrompt} />
+                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : "Home"} initialPrompt={askInitialPrompt} />
                     </motion.div>
                 ) : mainPanel === "conversation" && activeConversation ? (
                     <motion.div
@@ -1241,16 +1271,6 @@ export const NumixScreen = () => {
                 ) : mainPanel === "status-overview" ? (
                     <motion.div key="status-overview" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
                         <StatusOverviewPage goToPanel={goToPanel} />
-                    </motion.div>
-                ) : mainPanel === "tax-overview" ? (
-                    <motion.div key="tax-overview" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
-                        <TaxScreen page="overview" onAddCompany={() => {
-                            const newConv = { id: "add-company-" + Date.now(), title: "Add Another Company", time: "Just now", status: "waiting-numix" as TaskStatus };
-                            setConversations((prev) => [newConv, ...prev]);
-                            setAskInitialPrompt("I'd like to add another company to my account. Can you help me set it up?");
-                            setAskBackPanel("tax-overview");
-                            goToPanel("new-ask");
-                        }} />
                     </motion.div>
                 ) : mainPanel === "tax-filing" ? (
                     <motion.div key="tax-filing" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
@@ -1368,13 +1388,11 @@ export const NumixScreen = () => {
                                                 <div className="space-y-4 pb-4">
                                                     <DroppableListGroup status="waiting-you" title="Waiting on You" count={waitingYouTasks.length} tasks={waitingYouTasks} color="brand" />
                                                     <DroppableListGroup status="waiting-numix" title="Waiting on Numix" count={waitingNumixTasks.length} tasks={waitingNumixTasks} color="warning" />
-                                                    <DroppableListGroup status="done" title="Done" count={doneTasks.length} tasks={doneTasks} color="success" />
                                                 </div>
                                             ) : (
                                                 <div className="flex gap-4 pb-4">
                                                     <DroppableBoardColumn status="waiting-you" title="Waiting on You" count={waitingYouTasks.length} tasks={waitingYouTasks} color="brand" />
                                                     <DroppableBoardColumn status="waiting-numix" title="Waiting on Numix" count={waitingNumixTasks.length} tasks={waitingNumixTasks} color="warning" />
-                                                    <DroppableBoardColumn status="done" title="Done" count={doneTasks.length} tasks={doneTasks} color="success" />
                                                 </div>
                                             )}
                                             <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
@@ -1393,7 +1411,86 @@ export const NumixScreen = () => {
                                         </DndContext>
                                     </div>
 
-                                </div>
+                                    {/* Right: Company Overview */}
+                                    <div className="w-64 shrink-0 self-start overflow-hidden rounded-xl border border-secondary bg-primary">
+                                        <div className="px-4 py-3">
+                                            <h3 className="text-sm font-semibold text-primary">Company Overview</h3>
+                                        </div>
+                                        <div className="border-t border-secondary">
+                                                <div className="space-y-3 px-4 py-3">
+                                                    <div>
+                                                        <p className="text-[11px] text-tertiary">Company Name</p>
+                                                        <p className="text-sm font-medium text-primary">Acme Technologies Inc.</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] text-tertiary">EIN</p>
+                                                        <p className="font-mono text-sm text-primary">82-1234567</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] text-tertiary">Entity Type</p>
+                                                        <Badge color="brand" size="sm" type="pill-color">S-Corp</Badge>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] text-tertiary">State of Formation</p>
+                                                        <p className="text-sm font-medium text-primary">Delaware</p>
+                                                    </div>
+                                                </div>
+                                                <div className="border-t border-secondary px-4 py-3">
+                                                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-tertiary">Filing Details</p>
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <p className="text-[11px] text-tertiary">Fiscal Year</p>
+                                                            <p className="text-sm font-medium text-primary">Calendar (Jan–Dec)</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] text-tertiary">Filing Status</p>
+                                                            <BadgeWithDot color="success" size="sm" type="pill-color">Active</BadgeWithDot>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] text-tertiary">Tax Year</p>
+                                                            <p className="text-sm font-medium text-primary">2024</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] text-tertiary">Form Type</p>
+                                                            <p className="text-sm font-medium text-primary">1120-S</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="border-t border-secondary px-4 py-3">
+                                                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-tertiary">Contact</p>
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Mail01 className="size-3.5 text-fg-quaternary" />
+                                                            <span className="text-xs text-primary">finance@acmetech.com</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Phone01 className="size-3.5 text-fg-quaternary" />
+                                                            <span className="text-xs text-primary">(555) 012-3456</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="border-t border-secondary p-4">
+                                                    <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-3">
+                                                        <Stars01 className="mb-1.5 size-4 text-fg-brand-secondary_alt" />
+                                                        <p className="text-xs text-tertiary">Need to manage multiple companies?</p>
+                                                        <button
+                                                            type="button"
+                                                            className="mt-1.5 text-xs font-semibold text-brand-secondary hover:underline"
+                                                            onClick={() => {
+                                                                const newConv = { id: "add-company-" + Date.now(), title: "Add Another Company", time: "Just now", status: "waiting-numix" as TaskStatus };
+                                                                setConversations((prev) => [newConv, ...prev]);
+                                                                setAskInitialPrompt("I'd like to add another company to my account. Can you help me set it up?");
+                                                                setAskBackPanel("home");
+                                                                goToPanel("new-ask");
+                                                            }}
+                                                        >
+                                                            Add another company
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                             </main>
                         </div>
                     </motion.div>
