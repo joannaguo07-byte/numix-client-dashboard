@@ -1225,7 +1225,7 @@ function TaxPlanningPage() {
                                             ]}
                                             className="w-44 [&_p]:!text-xs [&_[slot=label]]:!text-xs" popoverClassName="w-44 [&_[slot=label]]:!text-xs"
                                         >
-                                            {(item) => <Select.Item>{item.label}</Select.Item>}
+                                            {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
                                         </Select>
                                     </div>
                                     <div className="flex items-center gap-1 rounded-lg bg-secondary_alt ring-1 ring-secondary ring-inset">
@@ -1321,7 +1321,6 @@ function TaxPlanningPage() {
                                                                 size="sm"
                                                                 iconLeading={
                                                                     strategy.ctaIcon === "upload" ? Upload01 :
-                                                                    strategy.ctaIcon === "edit" ? Edit05 :
                                                                     strategy.ctaIcon === "stars" ? Stars01 :
                                                                     strategy.ctaIcon === "arrow" ? ArrowRight :
                                                                     CheckCircle
@@ -1448,7 +1447,7 @@ function TaxPlanningPage() {
                                                 ]}
                                                 className="w-44 [&_p]:!text-xs [&_[slot=label]]:!text-xs" popoverClassName="w-44 [&_[slot=label]]:!text-xs"
                                             >
-                                                {(item) => <Select.Item>{item.label}</Select.Item>}
+                                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
                                             </Select>
                                         </div>
                                         <div className="flex items-center gap-1 rounded-lg bg-secondary_alt ring-1 ring-secondary ring-inset">
@@ -1534,13 +1533,12 @@ function TaxPlanningPage() {
                                                         size="sm"
                                                         iconLeading={
                                                             credit.ctaIcon === "upload" ? Upload01 :
-                                                            credit.ctaIcon === "edit" ? Edit05 :
                                                             credit.ctaIcon === "stars" ? Stars01 :
                                                             credit.ctaIcon === "arrow" ? ArrowRight :
                                                             CheckCircle
                                                         }
                                                         className="w-40 shrink-0 justify-center"
-                                                        onPress={() => credit.id === "rd" ? setSelectedCredit("rd") : undefined}
+                                                        onClick={() => credit.id === "rd" ? setSelectedCredit("rd") : undefined}
                                                     >
                                                         {credit.cta}
                                                     </Button>
