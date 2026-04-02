@@ -17,10 +17,15 @@ import {
     CoinsStacked01,
     CreditCard01,
     CurrencyDollar,
+    Copy01,
     DotsVertical,
+    Edit05,
     File06,
+    FileAttachment02,
     FilePlus01,
     FilterFunnel01,
+    Flag04,
+    Hash01,
     Globe01,
     InfoCircle,
     LineChartUp01,
@@ -31,14 +36,20 @@ import {
     Plus,
     SearchLg,
     Send01,
+    Divide03,
     Stars01,
+    Trash01,
+    Upload01,
     XClose,
+    ZoomIn,
+    ZoomOut,
 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
 import { Tabs } from "@/components/application/tabs/tabs";
 import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
+import { CloseButton } from "@/components/base/buttons/close-button";
 import { cx } from "@/utils/cx";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -67,15 +78,39 @@ const PAGE_ICONS: Record<BookkeepingPage, React.FC<React.SVGProps<SVGSVGElement>
 
 // ─── Transactions Data ──────────────────────────────────────────────────────
 
-const TRANSACTION_CATEGORIES = [
-    "Revenue", "Software", "Payroll", "Marketing", "Rent",
-    "Travel", "Office Supplies", "Utilities", "Insurance",
-    "Professional Services", "Uncategorized",
+// ─── Chart of Accounts ─────────────────────────────────────────────────────
+
+const CHART_OF_ACCOUNTS = [
+    // Income
+    { code: "40000", name: "Net Sales", parent: "Income" },
+    { code: "44400", name: "Sales of Product", parent: "Income" },
+    { code: "45500", name: "Other Sales / Income", parent: "Income" },
+    { code: "47900", name: "Sales of Services", parent: "Income" },
+    // COGS
+    { code: "50000", name: "Cost of Goods Sold", parent: "COGS" },
+    { code: "55000", name: "Subcontractors", parent: "COGS" },
+    // Expense
+    { code: "60000", name: "Advertising and Promotion", parent: "Expense" },
+    { code: "62100", name: "Insurance", parent: "Expense" },
+    { code: "64900", name: "Office Supplies", parent: "Expense" },
+    { code: "66000", name: "Payroll Expenses", parent: "Expense" },
+    { code: "66500", name: "Professional Fees", parent: "Expense" },
+    { code: "68100", name: "Rent or Lease", parent: "Expense" },
+    { code: "68300", name: "Travel Expense", parent: "Expense" },
+    { code: "68600", name: "Utilities", parent: "Expense" },
+    { code: "69000", name: "Software & Cloud Services", parent: "Expense" },
+    // Assets
+    { code: "11001", name: "Banks", parent: "Current Assets" },
+    { code: "12100", name: "Inventory Asset", parent: "Current Assets" },
+    { code: "15000", name: "Furniture and Equipment", parent: "Fixed Assets" },
+    // Liabilities
+    { code: "22000", name: "Credit Cards", parent: "Current Liabilities" },
+    { code: "24000", name: "Payroll Liabilities", parent: "Current Liabilities" },
 ];
 
-const CATEGORY_OPTIONS = [
-    { id: "all", label: "All Categories" },
-    ...TRANSACTION_CATEGORIES.map((c) => ({ id: c.toLowerCase().replace(/\s+/g, "-"), label: c })),
+const COA_OPTIONS = [
+    { id: "all", label: "All Accounts" },
+    ...CHART_OF_ACCOUNTS.map((a) => ({ id: a.code, label: a.name })),
 ];
 
 const CONFIDENCE_OPTIONS = [
@@ -85,17 +120,60 @@ const CONFIDENCE_OPTIONS = [
     { id: "low", label: "Low (<70%)" },
 ];
 
-const TRANSACTIONS = [
-    { id: "1", date: "Mar 11, 2026", description: "Stripe Payment - Customer Invoice #4521", amount: 2450.00, category: "Revenue", account: "Business Checking", confidence: 98 },
-    { id: "2", date: "Mar 10, 2026", description: "AWS Monthly Services", amount: -847.32, category: "Software", account: "Business Checking", confidence: 95 },
-    { id: "3", date: "Mar 9, 2026", description: "Gusto Payroll - March", amount: -12500.00, category: "Payroll", account: "Business Checking", confidence: 99 },
-    { id: "4", date: "Mar 8, 2026", description: "Google Ads Campaign", amount: -1250.00, category: "Marketing", account: "Business Checking", confidence: 92 },
-    { id: "5", date: "Mar 7, 2026", description: "WeWork Office Rent", amount: -3200.00, category: "Rent", account: "Business Checking", confidence: 97 },
-    { id: "6", date: "Mar 6, 2026", description: "Client Payment - Acme Corp", amount: 8500.00, category: "Revenue", account: "Business Checking", confidence: 96 },
-    { id: "7", date: "Mar 5, 2026", description: "Delta Airlines - SFO to NYC", amount: -584.00, category: "Travel", account: "Business Credit Card", confidence: 88 },
-    { id: "8", date: "Mar 4, 2026", description: "Amazon Business - Office Supplies", amount: -234.67, category: "Office Supplies", account: "Business Credit Card", confidence: 75 },
-    { id: "9", date: "Mar 3, 2026", description: "Zoom Pro Subscription", amount: -149.90, category: "Software", account: "Business Credit Card", confidence: 94 },
-    { id: "10", date: "Mar 2, 2026", description: "Client Payment - Beta Inc", amount: 3200.00, category: "Revenue", account: "Business Checking", confidence: 97 },
+// ─── Labels (Tax Credit Tags) ─────────────────────────────────────────────
+
+type LabelDef = { id: string; label: string; color: string };
+
+const DEFAULT_LABELS: LabelDef[] = [
+    { id: "rd", label: "R&D §41", color: "purple" },
+    { id: "manufacturing", label: "Mfg §45X", color: "indigo" },
+    { id: "family-leave", label: "PFML §45S", color: "blue" },
+    { id: "retirement-startup", label: "Retirement", color: "success" },
+    { id: "auto-enrollment", label: "Auto-Enroll", color: "orange" },
+    { id: "employer-contribution", label: "Emp. Contrib", color: "brand" },
+    { id: "health-care", label: "Health Care", color: "warning" },
+    { id: "disabled-access", label: "Access §44", color: "blue-light" },
+    { id: "child-care", label: "Child Care §45F", color: "pink" },
+];
+
+const MONTH_OPTIONS = [
+    { id: "2026-03", label: "March 2026" },
+    { id: "2026-02", label: "February 2026" },
+    { id: "2026-01", label: "January 2026" },
+    { id: "2025-12", label: "December 2025" },
+];
+
+const TRANSACTIONS_INIT = [
+    // March 2026
+    { id: "1", date: "Mar 11, 2026", month: "2026-03", description: "Stripe Payment - Customer Invoice #4521", amount: 2450.00, coaCode: "44400", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Stripe recurring invoice payment matched to customer #4521 in AR ledger" },
+    { id: "2", date: "Mar 10, 2026", month: "2026-03", description: "AWS Monthly Services", amount: -847.32, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute is used primarily for ML model training — qualifies as R&D supply expense under IRC §41" },
+    { id: "3", date: "Mar 9, 2026", month: "2026-03", description: "Gusto Payroll - March", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup", "employer-contribution"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time), PFML-eligible employees, and 401(k) employer match contributions" },
+    { id: "4", date: "Mar 8, 2026", month: "2026-03", description: "Google Ads Campaign", amount: -1250.00, coaCode: "60000", account: "Checking ···4821", confidence: 92, labels: [] as string[], aiReasoning: "Advertising spend is a general business expense — not eligible for any tax credits" },
+    { id: "5", date: "Mar 7, 2026", month: "2026-03", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 97, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space — accessibility improvements may qualify under IRC §44 Disabled Access Credit" },
+    { id: "6", date: "Mar 6, 2026", month: "2026-03", description: "Client Payment - Acme Corp", amount: 8500.00, coaCode: "47900", account: "Checking ···4821", confidence: 96, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #3892 — Acme Corp consulting engagement" },
+    { id: "7", date: "Mar 5, 2026", month: "2026-03", description: "Delta Airlines - SFO to NYC", amount: -584.00, coaCode: "68300", account: "Credit Card ···7392", confidence: 88, labels: ["rd"], aiReasoning: "Travel to NYC R&D partner site for prototype testing — qualifies as R&D-related travel expense" },
+    { id: "8", date: "Mar 4, 2026", month: "2026-03", description: "Amazon Business - Office Supplies", amount: -234.67, coaCode: "64900", account: "Credit Card ···7392", confidence: 75, labels: [] as string[], aiReasoning: "General office supplies purchase — no qualifying credit indicators found" },
+    { id: "9", date: "Mar 3, 2026", month: "2026-03", description: "Zoom Pro Subscription", amount: -149.90, coaCode: "69000", account: "Credit Card ···7392", confidence: 94, labels: ["rd"], aiReasoning: "Zoom used for R&D team standups and technical design reviews — partially qualifies under IRC §41" },
+    { id: "10", date: "Mar 2, 2026", month: "2026-03", description: "Client Payment - Beta Inc", amount: 3200.00, coaCode: "44400", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4102 — Beta Inc monthly retainer" },
+    { id: "26", date: "Mar 1, 2026", month: "2026-03", description: "Uber - Team Transportation", amount: -187.50, coaCode: "68300", account: "Credit Card ···7392", confidence: 65, labels: [] as string[], aiReasoning: "Ride-sharing expense — unclear if business or personal use, needs manual verification" },
+    // February 2026
+    { id: "11", date: "Feb 27, 2026", month: "2026-02", description: "Stripe Payment - Customer Invoice #4480", amount: 3800.00, coaCode: "44400", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Stripe recurring invoice payment matched to customer #4480 in AR ledger" },
+    { id: "12", date: "Feb 20, 2026", month: "2026-02", description: "AWS Monthly Services", amount: -812.50, coaCode: "69000", account: "Checking ···4821", confidence: 96, labels: ["rd"], aiReasoning: "AWS cloud compute for ML model training — qualifies as R&D supply expense under IRC §41" },
+    { id: "13", date: "Feb 15, 2026", month: "2026-02", description: "Gusto Payroll - February", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time) and PFML-eligible employees" },
+    { id: "14", date: "Feb 10, 2026", month: "2026-02", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space — may qualify under IRC §44" },
+    { id: "15", date: "Feb 5, 2026", month: "2026-02", description: "Figma Enterprise", amount: -450.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 91, labels: ["rd"], aiReasoning: "Design tooling used for R&D prototyping — partially qualifies under IRC §41" },
+    { id: "16", date: "Feb 3, 2026", month: "2026-02", description: "Client Payment - Gamma LLC", amount: 15000.00, coaCode: "47900", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4310 — Gamma LLC implementation fee" },
+    // January 2026
+    { id: "17", date: "Jan 28, 2026", month: "2026-01", description: "Gusto Payroll - January", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time) and PFML-eligible employees" },
+    { id: "18", date: "Jan 22, 2026", month: "2026-01", description: "AWS Monthly Services", amount: -790.00, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute for ML training — qualifies as R&D supply expense" },
+    { id: "19", date: "Jan 15, 2026", month: "2026-01", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space" },
+    { id: "20", date: "Jan 10, 2026", month: "2026-01", description: "Client Payment - Delta Partners", amount: 5000.00, coaCode: "47900", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Monthly retainer payment from Delta Partners" },
+    { id: "21", date: "Jan 5, 2026", month: "2026-01", description: "Datadog Monitoring", amount: -320.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 82, labels: ["rd"], aiReasoning: "Infrastructure monitoring — partially qualifies as R&D tooling" },
+    // December 2025
+    { id: "22", date: "Dec 28, 2025", month: "2025-12", description: "Gusto Payroll - December", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time)" },
+    { id: "23", date: "Dec 20, 2025", month: "2025-12", description: "Year-end Client Payment - Acme Corp", amount: 18000.00, coaCode: "44400", account: "Checking ···4821", confidence: 96, labels: [] as string[], aiReasoning: "Year-end settlement payment from Acme Corp" },
+    { id: "24", date: "Dec 15, 2025", month: "2025-12", description: "Holiday Team Dinner", amount: -1200.00, coaCode: "60000", account: "Credit Card ···7392", confidence: 72, labels: [] as string[], aiReasoning: "Team event expense — not eligible for tax credits" },
+    { id: "25", date: "Dec 10, 2025", month: "2025-12", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space" },
 ];
 
 // ─── Reports Data ───────────────────────────────────────────────────────────
@@ -158,73 +236,84 @@ const AR_INVOICES = [
 
 function TransactionsPage() {
     const [searchQuery, setSearchQuery] = useState("");
-    const [categoryFilter, setCategoryFilter] = useState("all");
-    const [confidenceFilter, setConfidenceFilter] = useState("all");
+    const [coaFilter, setCoaFilter] = useState("all");
+    const [monthFilter, setMonthFilter] = useState("2026-03");
+    const [transactions, setTransactions] = useState(TRANSACTIONS_INIT.map((t) => ({ ...t })));
+    const [availableLabels, setAvailableLabels] = useState<LabelDef[]>([...DEFAULT_LABELS]);
+    const [labelDropdownOpen, setLabelDropdownOpen] = useState<string | null>(null);
+    const [actionsOpen, setActionsOpen] = useState<string | null>(null);
+    const [dateSortDir, setDateSortDir] = useState<"asc" | "desc">("desc");
+    const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null);
+    const selectedTxn = selectedTxnId ? transactions.find((t) => t.id === selectedTxnId) ?? null : null;
+    const [memo, setMemo] = useState("");
+    const [slideoutLabelOpen, setSlideoutLabelOpen] = useState(false);
+    const [docZoom, setDocZoom] = useState(100);
 
-    const totalTxns = TRANSACTIONS.length;
-    const verifiedCount = TRANSACTIONS.filter((t) => t.confidence >= 95).length;
-    const needsReviewCount = TRANSACTIONS.filter((t) => t.confidence < 90).length;
+    const monthTxns = transactions.filter((t) => t.month === monthFilter);
+    const totalTxns = monthTxns.length;
+    const verifiedCount = monthTxns.filter((t) => t.confidence >= 95).length;
+    const needsReviewCount = monthTxns.filter((t) => t.confidence < 90).length;
+    const monthLabel = MONTH_OPTIONS.find((m) => m.id === monthFilter)?.label ?? monthFilter;
 
-    const filtered = TRANSACTIONS.filter((t) => {
-        if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-        if (categoryFilter !== "all") {
-            const catLabel = CATEGORY_OPTIONS.find((c) => c.id === categoryFilter)?.label;
-            if (catLabel && t.category !== catLabel) return false;
-        }
-        if (confidenceFilter === "high" && t.confidence < 90) return false;
-        if (confidenceFilter === "medium" && (t.confidence < 70 || t.confidence >= 90)) return false;
-        if (confidenceFilter === "low" && t.confidence >= 70) return false;
-        return true;
-    });
+    const filtered = monthTxns
+        .filter((t) => {
+            if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+            if (coaFilter !== "all" && t.coaCode !== coaFilter) return false;
+            return true;
+        })
+        .sort((a, b) => {
+            const da = new Date(a.date).getTime();
+            const db = new Date(b.date).getTime();
+            return dateSortDir === "desc" ? db - da : da - db;
+        });
+
+    const toggleLabel = (txnId: string, labelId: string) => {
+        setTransactions((prev) =>
+            prev.map((t) =>
+                t.id === txnId
+                    ? { ...t, labels: t.labels.includes(labelId) ? t.labels.filter((l) => l !== labelId) : [...t.labels, labelId] }
+                    : t,
+            ),
+        );
+    };
+
 
     return (
-        <div className="flex gap-4">
-            {/* Main content */}
-            <div className="min-w-0 flex-1 space-y-5">
-                {/* Stat cards */}
-                <div className="grid grid-cols-3 gap-4">
-                    <div className="rounded-xl border border-secondary bg-primary p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-3xl font-semibold tabular-nums tracking-tight text-primary">{totalTxns}</p>
-                                <p className="text-xs text-tertiary">Total Transactions</p>
-                            </div>
-                            <div className="flex size-10 items-center justify-center rounded-full bg-brand-primary_alt">
-                                <Stars01 className="size-5 text-fg-brand-primary" />
-                            </div>
-                        </div>
+        <div className="space-y-5">
+                {needsReviewCount > 0 && (
+                    <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-200/80 via-purple-100/70 to-blue-200/80 px-4 py-3.5">
+                        <Flag04 className="size-4 shrink-0 text-orange-dark-500" />
+                        <p className="text-sm text-tertiary">
+                            AI flagged <span className="font-semibold text-primary">{needsReviewCount} transaction{needsReviewCount > 1 ? "s" : ""}</span> for review this month
+                        </p>
                     </div>
-                    <div className="rounded-xl border border-secondary bg-primary p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-3xl font-semibold tabular-nums tracking-tight text-primary">{verifiedCount}</p>
-                                <p className="text-xs text-tertiary">Verified</p>
-                            </div>
-                            <div className="flex size-10 items-center justify-center rounded-full bg-success-secondary">
-                                <CheckCircle className="size-5 text-fg-success-primary" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="rounded-xl border border-secondary bg-primary p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-3xl font-semibold tabular-nums tracking-tight text-primary">{needsReviewCount}</p>
-                                <p className="text-xs text-tertiary">Needs Review</p>
-                            </div>
-                            <div className="flex size-10 items-center justify-center rounded-full bg-warning-secondary">
-                                <AlertCircle className="size-5 text-fg-warning-primary" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                )}
 
                 {/* Filters */}
                 <div className="rounded-xl border border-secondary bg-primary p-5">
-                    <div className="mb-4 flex items-center gap-2">
-                        <FilterFunnel01 className="size-4 text-fg-quaternary" />
-                        <h3 className="text-sm font-semibold text-primary">Filters</h3>
-                    </div>
                     <div className="flex items-center gap-3">
+                        <div className="w-44">
+                            <Select
+                                size="sm"
+                                placeholder="Month"
+                                selectedKey={monthFilter}
+                                onSelectionChange={(key) => setMonthFilter(key as string)}
+                                items={MONTH_OPTIONS}
+                            >
+                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
+                            </Select>
+                        </div>
+                        <div className="w-56">
+                            <Select
+                                size="sm"
+                                placeholder="All Accounts"
+                                selectedKey={coaFilter}
+                                onSelectionChange={(key) => setCoaFilter(key as string)}
+                                items={COA_OPTIONS}
+                            >
+                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
+                            </Select>
+                        </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2 rounded-lg border border-secondary bg-primary px-3 py-2">
                                 <SearchLg className="size-4 text-fg-quaternary" />
@@ -237,131 +326,516 @@ function TransactionsPage() {
                                 />
                             </div>
                         </div>
-                        <div className="w-44">
-                            <Select
-                                size="sm"
-                                placeholder="All Categories"
-                                selectedKey={categoryFilter}
-                                onSelectionChange={(key) => setCategoryFilter(key as string)}
-                                items={CATEGORY_OPTIONS}
-                            >
-                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
-                            </Select>
-                        </div>
-                        <div className="w-44">
-                            <Select
-                                size="sm"
-                                placeholder="All Confidence"
-                                selectedKey={confidenceFilter}
-                                onSelectionChange={(key) => setConfidenceFilter(key as string)}
-                                items={CONFIDENCE_OPTIONS}
-                            >
-                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
-                            </Select>
-                        </div>
                     </div>
                 </div>
 
                 {/* Transaction table */}
-                <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
+                <div className="overflow-x-auto rounded-xl border border-secondary bg-primary">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-secondary bg-secondary">
-                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Date</th>
-                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Description</th>
-                                <th className="px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
-                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Category</th>
-                                <th className="px-4 py-2.5 text-left font-medium text-secondary">Account</th>
-                                <th className="px-4 py-2.5 text-left font-medium text-secondary">AI Confidence</th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDateSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+                                        className="inline-flex items-center gap-1 transition hover:text-primary"
+                                    >
+                                        Date
+                                        <span className="inline-flex flex-col -space-y-1">
+                                            <ChevronUp className={cx("size-3", dateSortDir === "asc" ? "text-fg-primary" : "text-fg-quaternary")} />
+                                            <ChevronDown className={cx("size-3", dateSortDir === "desc" ? "text-fg-primary" : "text-fg-quaternary")} />
+                                        </span>
+                                    </button>
+                                </th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Description</th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
+                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>
                                 <th className="w-10 px-4 py-2.5" />
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((txn) => (
-                                <tr key={txn.id} className="border-b border-secondary last:border-b-0">
-                                    <td className="px-4 py-3 text-tertiary">{txn.date}</td>
-                                    <td className="px-4 py-3 font-medium text-primary">{txn.description}</td>
-                                    <td className={cx("px-4 py-3 text-right font-medium tabular-nums", txn.amount > 0 ? "text-success-primary" : "text-primary")}>
-                                        {txn.amount > 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <Badge color={txn.category === "Revenue" ? "success" : "gray"} size="sm" type="pill-color">
-                                            {txn.category}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-4 py-3 text-primary">{txn.account}</td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
-                                                <div
-                                                    className={cx(
-                                                        "h-full rounded-full",
-                                                        txn.confidence >= 90 ? "bg-success-solid" :
-                                                        txn.confidence >= 70 ? "bg-warning-solid" : "bg-error-solid",
-                                                    )}
-                                                    style={{ width: `${txn.confidence}%` }}
-                                                />
+                            {filtered.map((txn) => {
+                                const coa = CHART_OF_ACCOUNTS.find((a) => a.code === txn.coaCode);
+                                const isLabelOpen = labelDropdownOpen === txn.id;
+                                const needsReview = txn.confidence < 90;
+                                return (
+                                    <tr key={txn.id} onClick={() => setSelectedTxnId(txn.id)} className={cx("cursor-pointer border-b border-secondary last:border-b-0 transition hover:bg-primary_hover", needsReview && "border-l-2 border-l-orange-dark-500 bg-orange-dark-50")}>
+                                        <td className="whitespace-nowrap px-4 py-3 text-tertiary">
+                                            <div className="flex items-center gap-2">
+                                                {needsReview && <Flag04 className="size-3.5 text-orange-dark-500" />}
+                                                {txn.date}
                                             </div>
-                                            <span className={cx(
-                                                "text-xs tabular-nums font-medium",
-                                                txn.confidence >= 90 ? "text-success-primary" :
-                                                txn.confidence >= 70 ? "text-warning-primary" : "text-error-primary",
-                                            )}>
-                                                {txn.confidence}%
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <button type="button" className="text-fg-quaternary hover:text-fg-secondary">
-                                            <DotsVertical className="size-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                                        </td>
+                                        <td className="px-4 py-3 font-medium text-primary">
+                                            <div className="group/ai relative inline-flex items-center gap-1.5">
+                                                {txn.description}
+                                                <Stars01 className="size-3.5 shrink-0 cursor-help text-fg-brand-secondary_alt" />
+                                                <div className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 hidden w-72 rounded-lg bg-primary-solid px-3 py-2.5 shadow-lg group-hover/ai:block">
+                                                    <p className="text-xs font-semibold text-white">AI Insight</p>
+                                                    <p className="mt-1 text-xs font-medium text-tooltip-supporting-text">{txn.aiReasoning}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className={cx("whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums", txn.amount > 0 ? "text-success-primary" : "text-primary")}>
+                                            {txn.amount > 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="whitespace-nowrap px-4 py-3">
+                                            {coa ? (
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-primary">{coa.name}</span>
+                                                    <span className="text-xs text-tertiary">{coa.code}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-sm text-tertiary">Uncategorized</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex flex-wrap items-center gap-1">
+                                                {txn.labels.map((labelId) => {
+                                                    const lbl = availableLabels.find((l) => l.id === labelId);
+                                                    return lbl ? (
+                                                        <Badge key={labelId} color={lbl.color as any} size="sm" type="pill-color">
+                                                            {lbl.label}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleLabel(txn.id, labelId)}
+                                                                className="ml-1 -mr-0.5 inline-flex items-center justify-center rounded-full opacity-60 transition hover:opacity-100"
+                                                            >
+                                                                <XClose className="size-3" />
+                                                            </button>
+                                                        </Badge>
+                                                    ) : null;
+                                                })}
+                                                <div className="relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setLabelDropdownOpen(isLabelOpen ? null : txn.id)}
+                                                        className="flex size-5 items-center justify-center rounded-full border border-dashed border-tertiary text-tertiary transition hover:border-secondary hover:bg-secondary hover:text-secondary"
+                                                    >
+                                                        <Plus className="size-3" />
+                                                    </button>
+                                                    {isLabelOpen && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-10" onClick={() => setLabelDropdownOpen(null)} />
+                                                            <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-secondary bg-primary py-1 shadow-lg">
+                                                        {availableLabels.map((lbl) => {
+                                                            const isActive = txn.labels.includes(lbl.id);
+                                                            return (
+                                                                <button
+                                                                    key={lbl.id}
+                                                                    type="button"
+                                                                    onClick={() => toggleLabel(txn.id, lbl.id)}
+                                                                    className={cx(
+                                                                        "flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-xs transition hover:bg-primary_hover",
+                                                                        isActive && "bg-active",
+                                                                    )}
+                                                                >
+                                                                    <Badge color={lbl.color as any} size="sm" type="pill-color">{lbl.label}</Badge>
+                                                                    {isActive && <Check className="ml-auto size-3.5 text-fg-brand-primary" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="whitespace-nowrap px-4 py-3 text-primary">{txn.account}</td>
+                                        <td className="relative px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActionsOpen(actionsOpen === txn.id ? null : txn.id)}
+                                                className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-secondary hover:text-fg-secondary"
+                                            >
+                                                <DotsVertical className="size-4" />
+                                            </button>
+                                            {actionsOpen === txn.id && (
+                                                <>
+                                                    <div className="fixed inset-0 z-10" onClick={() => setActionsOpen(null)} />
+                                                    <div className="absolute right-4 top-full z-20 mt-1 w-48 overflow-hidden rounded-lg border border-secondary bg-primary py-1 shadow-lg">
+                                                        {[
+                                                            { icon: Edit05, label: "Edit transaction" },
+                                                            { icon: Upload01, label: "Attach receipt" },
+                                                            { icon: Divide03, label: "Split transaction" },
+                                                            { icon: MessageSquare01, label: "Add memo" },
+                                                            { icon: CheckCircle, label: "Mark as reviewed" },
+                                                        ].map((action) => (
+                                                            <button
+                                                                key={action.label}
+                                                                type="button"
+                                                                onClick={() => setActionsOpen(null)}
+                                                                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-secondary transition hover:bg-primary_hover"
+                                                            >
+                                                                <action.icon className="size-4 text-fg-quaternary" />
+                                                                {action.label}
+                                                            </button>
+                                                        ))}
+                                                        <div className="my-1 border-t border-secondary" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTransactions((prev) => prev.filter((t) => t.id !== txn.id));
+                                                                setActionsOpen(null);
+                                                            }}
+                                                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-error-primary transition hover:bg-primary_hover"
+                                                        >
+                                                            <Trash01 className="size-4" />
+                                                            Delete transaction
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
-            </div>
 
-            {/* Right sidebar */}
-            <div className="w-64 shrink-0 space-y-4 self-start">
-                <Button color="primary" size="sm" iconLeading={CheckCircle} className="w-full">
-                    Bulk Approve High Confidence
-                </Button>
+                {/* Transaction detail slideout */}
+                <SlideoutMenu isDismissable isOpen={selectedTxn !== null} onOpenChange={(open) => { if (!open) { setSelectedTxnId(null); setMemo(""); setSlideoutLabelOpen(false); setDocZoom(100); } }} modalClassName="w-[960px] max-w-none" dialogClassName="overflow-hidden">
+                    {({ close }) => {
+                        if (!selectedTxn) return null;
+                        const coa = CHART_OF_ACCOUNTS.find((a) => a.code === selectedTxn.coaCode);
+                        const needsReview = selectedTxn.confidence < 90;
+                        return (
+                            <div className="flex size-full">
+                                {/* Left panel – Transaction Details */}
+                                <div className="flex w-[400px] shrink-0 flex-col border-r border-secondary">
+                                    {/* Header */}
+                                    <header className="relative w-full px-6 pt-6 pb-4">
+                                        <CloseButton size="md" className="absolute top-3 left-3 shrink-0" onClick={() => { close(); setMemo(""); }} />
+                                        <div className="flex items-center gap-3 pl-8">
+                                            <div className={cx("flex size-10 items-center justify-center rounded-lg", selectedTxn.amount > 0 ? "bg-success-secondary" : "bg-secondary")}>
+                                                {selectedTxn.amount > 0 ? <LineChartUp01 className="size-5 text-fg-success-primary" /> : <CurrencyDollar className="size-5 text-fg-quaternary" />}
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-semibold text-primary">{selectedTxn.description}</h2>
+                                                <p className="text-sm text-tertiary">{selectedTxn.date}</p>
+                                            </div>
+                                        </div>
+                                    </header>
 
-                <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
-                    <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
-                    <p className="text-xs text-tertiary">
-                        AI has categorized all 10 transactions. 2 need manual review due to lower confidence scores.
-                    </p>
-                    <button type="button" className="mt-2 text-xs font-semibold text-brand-secondary hover:underline">
-                        Review flagged items
-                    </button>
-                </div>
+                                    {/* Scrollable content */}
+                                    <div className="flex-1 overflow-y-auto px-6 pb-5">
+                                        <div className="space-y-5">
+                                            {/* Amount & status */}
+                                            <div className="flex items-center justify-between rounded-xl border border-secondary bg-secondary px-4 py-3">
+                                                <div>
+                                                    <p className="text-xs text-tertiary">Amount</p>
+                                                    <p className={cx("mt-0.5 text-2xl font-semibold tabular-nums tracking-tight", selectedTxn.amount > 0 ? "text-success-primary" : "text-primary")}>
+                                                        {selectedTxn.amount > 0 ? "+" : ""}${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1.5">
+                                                    {needsReview ? (
+                                                        <Badge color="warning" size="sm" type="pill-color">Needs Review</Badge>
+                                                    ) : (
+                                                        <Badge color="success" size="sm" type="pill-color">Verified</Badge>
+                                                    )}
+                                                    <Badge color={selectedTxn.amount > 0 ? "success" : "gray"} size="sm" type="pill-color">
+                                                        {selectedTxn.amount > 0 ? "Income" : "Expense"}
+                                                    </Badge>
+                                                </div>
+                                            </div>
 
-                <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
-                    <div className="px-4 pt-3 pb-1">
-                        <div className="flex items-center gap-2">
-                            <Clock className="size-3.5 text-fg-brand-primary" />
-                            <h3 className="text-sm font-semibold text-brand-secondary">Coming Soon</h3>
-                        </div>
-                    </div>
-                    <div className="space-y-2 p-3">
-                        <div className="rounded-lg border-l-[3px] border-l-purple-500 bg-purple-50 py-2.5 pr-3 pl-3">
-                            <p className="text-xs font-medium text-primary">Bank Integrations</p>
-                            <p className="mt-0.5 text-[11px] text-secondary">Auto-import transactions</p>
-                        </div>
-                        <div className="rounded-lg border-l-[3px] border-l-pink-500 bg-pink-50 py-2.5 pr-3 pl-3">
-                            <p className="text-xs font-medium text-primary">Receipt Upload</p>
-                            <p className="mt-0.5 text-[11px] text-secondary">Match receipts to transactions</p>
-                        </div>
-                        <div className="rounded-lg border-l-[3px] border-l-blue-500 bg-blue-50 py-2.5 pr-3 pl-3">
-                            <p className="text-xs font-medium text-primary">AI Insights</p>
-                            <p className="mt-0.5 text-[11px] text-secondary">Spending patterns & anomalies</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                                            {/* Details grid */}
+                                            <div className="space-y-2">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Details</h3>
+                                                <div className="divide-y divide-secondary rounded-xl border border-secondary">
+                                                    <div className="flex items-center justify-between px-3 py-2.5">
+                                                        <span className="flex items-center gap-2 text-sm text-tertiary">
+                                                            <Calendar className="size-3.5 text-fg-quaternary" />
+                                                            Date
+                                                        </span>
+                                                        <span className="text-sm font-medium text-primary">{selectedTxn.date}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between px-3 py-2.5">
+                                                        <span className="flex items-center gap-2 text-sm text-tertiary">
+                                                            <Hash01 className="size-3.5 text-fg-quaternary" />
+                                                            Transaction ID
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+                                                            TXN-{selectedTxn.id.padStart(6, "0")}
+                                                            <button type="button" className="text-fg-quaternary hover:text-fg-secondary"><Copy01 className="size-3.5" /></button>
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between px-3 py-2.5">
+                                                        <span className="flex items-center gap-2 text-sm text-tertiary">
+                                                            <Bank className="size-3.5 text-fg-quaternary" />
+                                                            Account
+                                                        </span>
+                                                        <span className="text-sm font-medium text-primary">{selectedTxn.account}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between px-3 py-2.5">
+                                                        <span className="flex items-center gap-2 text-sm text-tertiary">
+                                                            <BarChartSquare02 className="size-3.5 text-fg-quaternary" />
+                                                            Chart of Account
+                                                        </span>
+                                                        <span className="text-sm font-medium text-primary">
+                                                            {coa ? (
+                                                                <span>{coa.name} <span className="text-xs text-tertiary">({coa.code})</span></span>
+                                                            ) : "Uncategorized"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Labels */}
+                                            <div className="space-y-2">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Labels</h3>
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    {selectedTxn.labels.map((labelId) => {
+                                                        const lbl = availableLabels.find((l) => l.id === labelId);
+                                                        return lbl ? (
+                                                            <Badge key={labelId} color={lbl.color as any} size="sm" type="pill-color">
+                                                                {lbl.label}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleLabel(selectedTxn.id, labelId)}
+                                                                    className="ml-1 -mr-0.5 inline-flex items-center justify-center rounded-full opacity-60 transition hover:opacity-100"
+                                                                >
+                                                                    <XClose className="size-3" />
+                                                                </button>
+                                                            </Badge>
+                                                        ) : null;
+                                                    })}
+                                                    <div className="relative">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSlideoutLabelOpen(!slideoutLabelOpen)}
+                                                            className="flex size-5 items-center justify-center rounded-full border border-dashed border-tertiary text-tertiary transition hover:border-secondary hover:bg-secondary hover:text-secondary"
+                                                        >
+                                                            <Plus className="size-3" />
+                                                        </button>
+                                                        {slideoutLabelOpen && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-10" onClick={() => setSlideoutLabelOpen(false)} />
+                                                                <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-secondary bg-primary py-1 shadow-lg">
+                                                                    {availableLabels.map((lbl) => {
+                                                                        const isActive = selectedTxn.labels.includes(lbl.id);
+                                                                        return (
+                                                                            <button
+                                                                                key={lbl.id}
+                                                                                type="button"
+                                                                                onClick={() => toggleLabel(selectedTxn.id, lbl.id)}
+                                                                                className={cx(
+                                                                                    "flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-xs transition hover:bg-primary_hover",
+                                                                                    isActive && "bg-active",
+                                                                                )}
+                                                                            >
+                                                                                <Badge color={lbl.color as any} size="sm" type="pill-color">{lbl.label}</Badge>
+                                                                                {isActive && <Check className="ml-auto size-3.5 text-fg-brand-primary" />}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* AI Insight */}
+                                            <div className="space-y-2">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI Insight</h3>
+                                                <div className="rounded-xl bg-gradient-to-r from-purple-100/60 to-blue-100/60 px-3 py-2.5">
+                                                    <div className="flex items-start gap-2">
+                                                        <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
+                                                        <p className="text-xs leading-relaxed text-tertiary">{selectedTxn.aiReasoning}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <footer className="w-full p-4 shadow-[inset_0px_1px_0px_0px] shadow-border-secondary md:px-6">
+                                        <Button color="primary" size="sm" iconLeading={CheckCircle} className="w-full">
+                                            {needsReview ? "Approve Transaction" : "Verified"}
+                                        </Button>
+                                    </footer>
+                                </div>
+
+                                {/* Right panel – Document Preview */}
+                                <div className="flex flex-1 flex-col bg-secondary">
+                                    {/* Document toolbar */}
+                                    <div className="flex items-center justify-between border-b border-secondary px-5 py-3">
+                                        <h3 className="text-sm font-semibold text-primary">Transaction document</h3>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setDocZoom((z) => Math.max(50, z - 10))}
+                                                className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-primary hover:text-fg-secondary"
+                                            >
+                                                <ZoomOut className="size-4" />
+                                            </button>
+                                            <span className="min-w-[40px] text-center text-xs tabular-nums text-secondary">{docZoom}%</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDocZoom((z) => Math.min(200, z + 10))}
+                                                className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-primary hover:text-fg-secondary"
+                                            >
+                                                <ZoomIn className="size-4" />
+                                            </button>
+                                            <div className="mx-1 h-4 w-px bg-tertiary" />
+                                            <span className="text-xs text-tertiary">Page 1 of 1</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Document area */}
+                                    <div className="flex flex-1 items-start justify-center overflow-auto p-6">
+                                        <div className="w-full origin-top rounded-lg bg-primary shadow-lg ring-1 ring-secondary transition-transform duration-150" style={{ transform: `scale(${docZoom / 100})` }}>
+                                            {/* Bank statement style document */}
+                                            <div className="space-y-6 p-8">
+                                                {/* Bank header */}
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Bank className="size-5 text-fg-primary" />
+                                                            <p className="text-base font-bold text-primary">{selectedTxn.account}</p>
+                                                        </div>
+                                                        <p className="mt-0.5 text-[11px] text-quaternary">A Division of First Citizens Bank</p>
+                                                    </div>
+                                                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                                                        <p>P.O. Box 2360</p>
+                                                        <p>Omaha NE 68103</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Statement title row */}
+                                                <div className="flex items-start justify-between border-t-2 border-brand-solid pt-4">
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-primary">Return Service Requested</p>
+                                                        <div className="mt-1.5 text-[11px] leading-relaxed text-tertiary">
+                                                            <p className="font-medium text-primary">{selectedTxn.description}</p>
+                                                            <p>123 BUSINESS AVE</p>
+                                                            <p>SAN FRANCISCO CA 94105</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-sm font-bold text-primary">Monthly Statement</p>
+                                                        <p className="mt-0.5 text-[11px] text-tertiary">Statement Period: {selectedTxn.date}</p>
+                                                        <div className="mt-3 space-y-1 text-[11px]">
+                                                            <div className="flex justify-between gap-8">
+                                                                <span className="text-tertiary">Account Number:</span>
+                                                                <span className="font-medium text-primary">Ending in 7800</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-8">
+                                                                <span className="text-tertiary">New Balance:</span>
+                                                                <span className="font-medium text-primary">${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-8">
+                                                                <span className="text-tertiary">Payment Due Date:</span>
+                                                                <span className="font-medium text-primary">05-26-25</span>
+                                                            </div>
+                                                            <div className="flex justify-between gap-8">
+                                                                <span className="text-tertiary">Payment Amount:</span>
+                                                                <span className="font-medium text-primary">${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Account Summary */}
+                                                <div>
+                                                    <div className="border-b-2 border-brand-solid pb-1">
+                                                        <p className="text-xs font-bold text-primary">ACCOUNT SUMMARY</p>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-x-10 gap-y-1 text-[11px]">
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Previous Balance</span>
+                                                            <span className="tabular-nums text-primary">$5,124.33</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Statement Closing Date</span>
+                                                            <span className="tabular-nums text-primary">04-30-25</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Payments</span>
+                                                            <span className="tabular-nums text-primary">-$5,124.33</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Credit Limit</span>
+                                                            <span className="tabular-nums text-primary">$100,000.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Credits</span>
+                                                            <span className="tabular-nums text-primary">-$0.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Available Credit</span>
+                                                            <span className="tabular-nums text-primary">$85,884.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Purchases and Other Charges</span>
+                                                            <span className="tabular-nums text-primary">+${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Days in billing cycle</span>
+                                                            <span className="tabular-nums text-primary">30</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Cash Advances</span>
+                                                            <span className="tabular-nums text-primary">+$0.00</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                                                            <span className="text-tertiary">Payment Due Date</span>
+                                                            <span className="tabular-nums text-primary">05-26-25</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-t border-secondary pt-1">
+                                                            <span className="font-semibold text-primary">New Balance</span>
+                                                            <span className="font-semibold tabular-nums text-primary">=${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                                        </div>
+                                                        <div className="flex justify-between border-t border-secondary pt-1">
+                                                            <span className="text-tertiary">Past Due</span>
+                                                            <span className="tabular-nums text-primary">$0.00</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Transactions */}
+                                                <div>
+                                                    <div className="border-b-2 border-brand-solid pb-1">
+                                                        <p className="text-xs font-bold text-primary">TRANSACTIONS</p>
+                                                    </div>
+                                                    <table className="mt-2 w-full text-[11px]">
+                                                        <thead>
+                                                            <tr className="border-b border-secondary">
+                                                                <th className="pb-1.5 text-left font-semibold text-primary">Date</th>
+                                                                <th className="pb-1.5 text-left font-semibold text-primary">Description</th>
+                                                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr className="border-b border-dotted border-tertiary">
+                                                                <td className="py-2 align-top text-tertiary">{selectedTxn.date}</td>
+                                                                <td className="py-2 pr-4 text-primary">
+                                                                    {selectedTxn.description}
+                                                                    <br />
+                                                                    <span className="text-[10px] text-tertiary">MCC: 4121 &nbsp; MERCHANT ZIP: 94105</span>
+                                                                </td>
+                                                                <td className="py-2 text-right tabular-nums text-primary">${Math.abs(selectedTxn.amount).toFixed(2)}</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td colSpan={2} className="pt-2.5 text-right text-[10px] font-semibold uppercase text-primary">Total for account ending in 7800</td>
+                                                                <td className="pt-2.5 text-right text-[11px] font-semibold tabular-nums text-primary">${Math.abs(selectedTxn.amount).toFixed(2)}</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }}
+                </SlideoutMenu>
         </div>
     );
 }
