@@ -49,6 +49,7 @@ import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
 import { Tabs } from "@/components/application/tabs/tabs";
 import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
+import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
 import { CloseButton } from "@/components/base/buttons/close-button";
 import { cx } from "@/utils/cx";
 
@@ -109,7 +110,7 @@ const CHART_OF_ACCOUNTS = [
 ];
 
 const COA_OPTIONS = [
-    { id: "all", label: "All Accounts" },
+    { id: "all", label: "All Chart of Account" },
     ...CHART_OF_ACCOUNTS.map((a) => ({ id: a.code, label: a.name })),
 ];
 
@@ -141,6 +142,36 @@ const MONTH_OPTIONS = [
     { id: "2026-02", label: "February 2026" },
     { id: "2026-01", label: "January 2026" },
     { id: "2025-12", label: "December 2025" },
+];
+
+// ─── Bank Accounts ───────────────────────────────────────────────────────────
+
+type BankAccountType = "checking" | "savings" | "credit-card";
+
+interface BankAccount {
+    id: string;
+    name: string;           // e.g. "Checking ···4821"
+    institution: string;    // e.g. "Mercury"
+    type: BankAccountType;
+    balance: number;
+    currency: string;
+}
+
+const BANK_ACCOUNTS_INIT: BankAccount[] = [
+    { id: "checking-4821", name: "Checking ···4821", institution: "Mercury", type: "checking", balance: 84521.33, currency: "USD" },
+    { id: "credit-7392", name: "Credit Card ···7392", institution: "Brex", type: "credit-card", balance: -3421.50, currency: "USD" },
+];
+
+// Available banks to connect via Plaid-style flow
+const AVAILABLE_BANKS = [
+    { id: "mercury", name: "Mercury", description: "Banking built for startups" },
+    { id: "chase", name: "Chase Business", description: "Business checking & credit" },
+    { id: "brex", name: "Brex", description: "Corporate cards & cash management" },
+    { id: "svb", name: "Silicon Valley Bank", description: "Banking for innovators" },
+    { id: "boa", name: "Bank of America", description: "Business accounts" },
+    { id: "wells-fargo", name: "Wells Fargo", description: "Small business banking" },
+    { id: "amex", name: "American Express", description: "Business credit cards" },
+    { id: "other", name: "Other Bank", description: "Connect manually via routing number" },
 ];
 
 const TRANSACTIONS_INIT = [
@@ -239,6 +270,10 @@ function TransactionsPage() {
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
     const [transactions, setTransactions] = useState(TRANSACTIONS_INIT.map((t) => ({ ...t })));
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(BANK_ACCOUNTS_INIT);
+    const [accountFilter, setAccountFilter] = useState<string>("all");
+    const [addBankOpen, setAddBankOpen] = useState(false);
+    const [connectingBankId, setConnectingBankId] = useState<string | null>(null);
     const [availableLabels, setAvailableLabels] = useState<LabelDef[]>([...DEFAULT_LABELS]);
     const [labelDropdownOpen, setLabelDropdownOpen] = useState<string | null>(null);
     const [actionsOpen, setActionsOpen] = useState<string | null>(null);
@@ -255,10 +290,34 @@ function TransactionsPage() {
     const needsReviewCount = monthTxns.filter((t) => t.confidence < 90).length;
     const monthLabel = MONTH_OPTIONS.find((m) => m.id === monthFilter)?.label ?? monthFilter;
 
+    const selectedAccount = accountFilter === "all" ? null : bankAccounts.find((a) => a.name === accountFilter);
+
+    function connectBank(bank: typeof AVAILABLE_BANKS[number]) {
+        setConnectingBankId(bank.id);
+        // Simulate async connection
+        setTimeout(() => {
+            const last4 = String(Math.floor(1000 + Math.random() * 9000));
+            const isCredit = bank.id === "amex" || bank.id === "brex";
+            const newAccount: BankAccount = {
+                id: `${bank.id}-${last4}`,
+                name: isCredit ? `Credit Card ···${last4}` : `Checking ···${last4}`,
+                institution: bank.name,
+                type: isCredit ? "credit-card" : "checking",
+                balance: isCredit ? -Math.round(Math.random() * 5000 * 100) / 100 : Math.round(Math.random() * 100000 * 100) / 100,
+                currency: "USD",
+            };
+            setBankAccounts((prev) => [...prev, newAccount]);
+            setConnectingBankId(null);
+            setAddBankOpen(false);
+            setAccountFilter(newAccount.name);
+        }, 1200);
+    }
+
     const filtered = monthTxns
         .filter((t) => {
             if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
             if (coaFilter !== "all" && t.coaCode !== coaFilter) return false;
+            if (accountFilter !== "all" && t.account !== accountFilter) return false;
             return true;
         })
         .sort((a, b) => {
@@ -289,48 +348,105 @@ function TransactionsPage() {
                     </div>
                 )}
 
-                {/* Filters */}
-                <div className="rounded-xl border border-secondary bg-primary p-5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-44">
-                            <Select
-                                size="sm"
-                                placeholder="Month"
-                                selectedKey={monthFilter}
-                                onSelectionChange={(key) => setMonthFilter(key as string)}
-                                items={MONTH_OPTIONS}
+                {/* Combined: Bank Tabs + Filters + Table */}
+                <div className="overflow-x-auto rounded-xl border border-secondary bg-primary">
+                    {/* Bank Tabs + Filters — single row */}
+                    {/* Bank Account Tabs */}
+                    <div className="flex items-center gap-2 border-b border-secondary p-2">
+                        {(() => {
+                            const allCount = monthTxns.length;
+                            const isAllActive = accountFilter === "all";
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={() => setAccountFilter("all")}
+                                    className={cx(
+                                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition",
+                                        isAllActive ? "bg-brand-primary_alt text-brand-secondary" : "text-tertiary hover:bg-secondary hover:text-primary",
+                                    )}
+                                >
+                                    <Bank className="size-4" />
+                                    All Banking Accounts
+                                    <span className={cx("rounded-full px-1.5 py-0.5 text-xs font-medium", isAllActive ? "bg-primary text-brand-secondary" : "bg-secondary text-tertiary")}>{allCount}</span>
+                                </button>
+                            );
+                        })()}
+                        {bankAccounts.map((acct) => {
+                            const acctTxns = monthTxns.filter((t) => t.account === acct.name);
+                            const isActive = accountFilter === acct.name;
+                            const Icon = acct.type === "credit-card" ? CreditCard01 : Bank;
+                            return (
+                                <button
+                                    key={acct.id}
+                                    type="button"
+                                    onClick={() => setAccountFilter(acct.name)}
+                                    className={cx(
+                                        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition",
+                                        isActive ? "bg-brand-primary_alt text-brand-secondary" : "text-tertiary hover:bg-secondary hover:text-primary",
+                                    )}
+                                >
+                                    <Icon className="size-4" />
+                                    <span>
+                                        <span className="font-semibold">{acct.institution}</span>
+                                        <span className="mx-1.5 text-quaternary">·</span>
+                                        <span className="font-normal text-tertiary">{acct.name}</span>
+                                    </span>
+                                    <span className={cx("rounded-full px-1.5 py-0.5 text-xs font-medium", isActive ? "bg-primary text-brand-secondary" : "bg-secondary text-tertiary")}>{acctTxns.length}</span>
+                                </button>
+                            );
+                        })}
+                        <button
+                            type="button"
+                            onClick={() => setAddBankOpen(true)}
+                            className="flex items-center gap-1.5 rounded-lg border border-dashed border-secondary px-3 py-2 text-sm font-medium text-tertiary transition hover:border-brand hover:bg-brand-primary_alt hover:text-brand-secondary"
+                        >
+                            <Plus className="size-4" />
+                            Add Bank
+                        </button>
+                    </div>
+
+                    {/* Filters row */}
+                    <div className="flex items-center gap-2 border-b border-secondary px-4 py-2.5">
+                        {selectedAccount && (
+                            <span className={cx("text-sm font-semibold tabular-nums", selectedAccount.balance < 0 ? "text-error-primary" : "text-success-primary")}>
+                                {selectedAccount.balance < 0 ? "-" : ""}${Math.abs(selectedAccount.balance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            </span>
+                        )}
+                        <div className="relative flex-1">
+                            <select
+                                value={monthFilter}
+                                onChange={(e) => setMonthFilter(e.target.value)}
+                                className="w-full appearance-none rounded-md border border-secondary bg-primary py-1.5 pl-2.5 pr-7 text-xs font-medium text-primary focus:border-brand focus:outline-none"
                             >
-                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
-                            </Select>
+                                {MONTH_OPTIONS.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-fg-quaternary" />
                         </div>
-                        <div className="w-56">
-                            <Select
-                                size="sm"
-                                placeholder="All Accounts"
-                                selectedKey={coaFilter}
-                                onSelectionChange={(key) => setCoaFilter(key as string)}
-                                items={COA_OPTIONS}
+                        <div className="relative flex-1">
+                            <select
+                                value={coaFilter}
+                                onChange={(e) => setCoaFilter(e.target.value)}
+                                className="w-full appearance-none rounded-md border border-secondary bg-primary py-1.5 pl-2.5 pr-7 text-xs font-medium text-primary focus:border-brand focus:outline-none"
                             >
-                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
-                            </Select>
+                                {COA_OPTIONS.map((o) => (
+                                    <option key={o.id} value={o.id}>{o.label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-fg-quaternary" />
                         </div>
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2 rounded-lg border border-secondary bg-primary px-3 py-2">
-                                <SearchLg className="size-4 text-fg-quaternary" />
-                                <input
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search transactions..."
-                                    className="w-full bg-transparent text-sm text-primary placeholder:text-quaternary focus:outline-none"
-                                />
-                            </div>
+                        <div className="flex flex-1 items-center gap-1.5 rounded-md border border-secondary bg-primary px-2.5 py-1.5">
+                            <SearchLg className="size-3.5 text-fg-quaternary" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search..."
+                                className="w-full bg-transparent text-xs text-primary placeholder:text-quaternary focus:outline-none"
+                            />
                         </div>
                     </div>
-                </div>
-
-                {/* Transaction table */}
-                <div className="overflow-x-auto rounded-xl border border-secondary bg-primary">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-secondary bg-secondary">
@@ -348,10 +464,10 @@ function TransactionsPage() {
                                     </button>
                                 </th>
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Description</th>
-                                <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
+                                <th className="w-[110px] whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
-                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
-                                <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>
+                                <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Labels</th>
+                                {accountFilter === "all" && <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>}
                                 <th className="w-10 px-4 py-2.5" />
                             </tr>
                         </thead>
@@ -392,7 +508,7 @@ function TransactionsPage() {
                                             )}
                                         </td>
                                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex flex-wrap items-center gap-1">
+                                            <div className="flex min-w-[120px] flex-wrap items-center justify-end gap-1">
                                                 {txn.labels.map((labelId) => {
                                                     const lbl = availableLabels.find((l) => l.id === labelId);
                                                     return lbl ? (
@@ -443,7 +559,7 @@ function TransactionsPage() {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="whitespace-nowrap px-4 py-3 text-primary">{txn.account}</td>
+                                        {accountFilter === "all" && <td className="whitespace-nowrap px-4 py-3 text-primary">{txn.account}</td>}
                                         <td className="relative px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
@@ -836,6 +952,93 @@ function TransactionsPage() {
                         );
                     }}
                 </SlideoutMenu>
+
+                {/* Add Bank Modal */}
+                <ModalOverlay isOpen={addBankOpen} onOpenChange={setAddBankOpen} isDismissable>
+                    <Modal className="max-w-2xl">
+                        <Dialog className="!items-stretch !p-0 rounded-2xl bg-primary shadow-xl ring-1 ring-secondary">
+                            <div className="flex max-h-[85vh] w-full flex-col">
+                                <header className="relative border-b border-secondary px-6 pt-6 pb-4">
+                                    <div className="flex items-center gap-3 pr-8">
+                                        <div className="flex size-10 items-center justify-center rounded-lg bg-brand-secondary">
+                                            <Bank className="size-5 text-fg-brand-primary" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-primary">Connect a Bank Account</h2>
+                                            <p className="text-sm text-tertiary">Choose your bank to securely link via Plaid</p>
+                                        </div>
+                                    </div>
+                                    <CloseButton size="md" className="absolute top-3 right-3" onClick={() => setAddBankOpen(false)} />
+                                </header>
+
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <div className="relative mb-4">
+                                        <SearchLg className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-quaternary" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search banks..."
+                                            className="w-full rounded-lg border border-secondary bg-primary py-2 pl-9 pr-3 text-sm text-primary placeholder:text-quaternary focus:border-brand focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {AVAILABLE_BANKS.map((bank) => {
+                                            const isConnecting = connectingBankId === bank.id;
+                                            const alreadyConnected = bankAccounts.some((a) => a.institution === bank.name);
+                                            return (
+                                                <button
+                                                    key={bank.id}
+                                                    type="button"
+                                                    disabled={isConnecting || connectingBankId !== null}
+                                                    onClick={() => connectBank(bank)}
+                                                    className={cx(
+                                                        "flex items-center gap-3 rounded-xl border p-4 text-left transition",
+                                                        isConnecting ? "border-brand bg-brand-primary_alt" : "border-secondary bg-primary hover:border-brand hover:bg-brand-primary_alt/30",
+                                                        connectingBankId !== null && !isConnecting && "opacity-50",
+                                                    )}
+                                                >
+                                                    <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-lg", isConnecting ? "bg-brand-solid" : "bg-secondary")}>
+                                                        <Building01 className={cx("size-5", isConnecting ? "text-white" : "text-fg-primary")} />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="truncate text-sm font-semibold text-primary">{bank.name}</p>
+                                                            {alreadyConnected && <Check className="size-3.5 text-fg-success-primary" />}
+                                                        </div>
+                                                        <p className="truncate text-xs text-tertiary">{bank.description}</p>
+                                                    </div>
+                                                    {isConnecting ? (
+                                                        <span className="text-xs font-medium text-brand-secondary">Connecting…</span>
+                                                    ) : alreadyConnected ? (
+                                                        <span className="text-xs font-medium text-success-primary">Connected</span>
+                                                    ) : (
+                                                        <ChevronRight className="size-4 text-fg-quaternary" />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="mt-6 rounded-xl bg-secondary p-4">
+                                        <div className="flex items-start gap-2">
+                                            <InfoCircle className="mt-0.5 size-4 shrink-0 text-fg-quaternary" />
+                                            <div>
+                                                <p className="text-xs font-semibold text-primary">Secure connection via Plaid</p>
+                                                <p className="mt-0.5 text-xs text-tertiary">Your credentials are never stored. Numix uses bank-level encryption and read-only access.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <footer className="border-t border-secondary px-6 py-4">
+                                    <div className="flex items-center justify-end gap-3">
+                                        <Button color="secondary" size="sm" onClick={() => setAddBankOpen(false)}>Cancel</Button>
+                                    </div>
+                                </footer>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
         </div>
     );
 }

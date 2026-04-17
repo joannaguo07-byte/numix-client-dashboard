@@ -65,6 +65,7 @@ import {
 import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
 import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
 import { CloseButton } from "@/components/base/buttons/close-button";
+import { Input } from "@/components/base/input/input";
 import { cx } from "@/utils/cx";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1022,6 +1023,19 @@ function TaxPlanningPage() {
     const [editingRdValue, setEditingRdValue] = useState("");
     const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
     const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
+    const [editingPerson, setEditingPerson] = useState<Record<string, string> | null>(null);
+    const [openLabelDropdown, setOpenLabelDropdown] = useState<string | null>(null);
+
+    function toggleRdLabel(expenseId: string, labelId: string) {
+        setRdExpenses((prev) =>
+            prev.map((e) =>
+                e.id === expenseId
+                    ? { ...e, labels: e.labels.includes(labelId) ? e.labels.filter((l) => l !== labelId) : [...e.labels, labelId] }
+                    : e,
+            ),
+        );
+    }
+
     const [strategyPage, setStrategyPage] = useState(0);
     const [strategySortBy, setStrategySortBy] = useState<"status" | "impact" | "category">("status");
     const STRATEGIES_PER_PAGE = 8;
@@ -1573,7 +1587,7 @@ function TaxPlanningPage() {
                                     <div className="text-right">
                                         <p className="text-xs text-tertiary">Total Estimated Credit</p>
                                         <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-success-primary">
-                                            {TAX_CREDITS.find(c => c.id === "rd")?.amount}
+                                            ${(rdEmployees.reduce((s, r) => s + r.qualified, 0) + rdContractors.reduce((s, r) => s + r.qualified, 0) + rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + e.amount, 0)).toLocaleString()}
                                         </p>
                                     </div>
                                 </div>
@@ -1635,7 +1649,7 @@ function TaxPlanningPage() {
                                                                 <td className="px-4 py-3 text-sm text-tertiary">{row.country}</td>
                                                                 <td className="px-4 py-3 text-right text-sm tabular-nums font-medium text-primary">${row.qualified.toLocaleString()}</td>
                                                                 <td className="px-4 py-3 text-right text-sm tabular-nums text-tertiary">${row.contractAmount.toLocaleString()}</td>
-                                                                <td className="px-4 py-3">
+                                                                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                                                     <div className="flex items-center justify-end gap-2">
                                                                         {editingRdPercent === row.id ? (
                                                                             <div className="flex items-center gap-1">
@@ -1733,14 +1747,13 @@ function TaxPlanningPage() {
                                             <table className="w-full">
                                                 <thead>
                                                     <tr className="border-b border-secondary bg-secondary">
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">Date</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">Description</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-right text-xs font-medium text-tertiary">Amount</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">Chart of Account</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">Labels</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">Account</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">R&D Status</th>
-                                                        <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-medium text-tertiary">AI Reasoning</th>
+                                                        <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Date</th>
+                                                        <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Description</th>
+                                                        <th className="w-[100px] whitespace-nowrap px-3 py-2 text-right text-xs font-medium text-tertiary">Amount</th>
+                                                        <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Chart of Account</th>
+                                                        <th className="w-[140px] whitespace-nowrap px-3 py-2 text-right text-xs font-medium text-tertiary">Labels</th>
+                                                        <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Account</th>
+                                                        <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">R&D Status</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1750,14 +1763,14 @@ function TaxPlanningPage() {
                                                         const coa = RD_CHART_OF_ACCOUNTS.find((a) => a.code === item.coaCode);
                                                         const needsReview = item.confidence < 90;
                                                         return (
-                                                            <tr key={item.id} className={cx("cursor-pointer border-b border-secondary last:border-b-0 transition hover:bg-primary_hover", needsReview && "border-l-2 border-l-warning-solid bg-warning-primary/5")} onClick={() => setSelectedExpenseId(item.id)}>
-                                                                <td className="whitespace-nowrap px-4 py-3 text-tertiary">
+                                                            <tr key={item.id} className={cx("cursor-pointer border-b border-secondary last:border-b-0 transition hover:bg-primary_hover", needsReview && "border-l-2 border-l-orange-dark-500 bg-orange-dark-50")} onClick={() => setSelectedExpenseId(item.id)}>
+                                                                <td className="whitespace-nowrap px-3 py-2.5 text-sm text-tertiary">
                                                                     <div className="flex items-center gap-2">
-                                                                        {needsReview && <Flag04 className="size-3.5 text-fg-warning-primary" />}
+                                                                        {needsReview && <Flag04 className="size-3.5 text-orange-dark-500" />}
                                                                         {item.date}
                                                                     </div>
                                                                 </td>
-                                                                <td className="px-4 py-3 font-medium text-primary">
+                                                                <td className="px-3 py-2.5 text-sm font-medium text-primary">
                                                                     <div className="group/ai relative inline-flex items-center gap-1.5">
                                                                         {item.description}
                                                                         <Stars01 className="size-3.5 shrink-0 cursor-help text-fg-brand-secondary_alt" />
@@ -1767,33 +1780,80 @@ function TaxPlanningPage() {
                                                                         </div>
                                                                     </div>
                                                                 </td>
-                                                                <td className={cx("whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums", item.amount > 0 ? "text-success-primary" : "text-primary")}>
+                                                                <td className={cx("whitespace-nowrap px-3 py-2.5 text-right text-sm font-medium tabular-nums", item.amount > 0 ? "text-success-primary" : "text-primary")}>
                                                                     {item.amount > 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                                                                 </td>
-                                                                <td className="whitespace-nowrap px-4 py-3">
+                                                                <td className="whitespace-nowrap px-3 py-2.5">
                                                                     {coa ? (
-                                                                        <span className="text-sm text-primary">{coa.name} <span className="text-xs text-tertiary">({coa.code})</span></span>
+                                                                        <div>
+                                                                            <p className="text-xs tabular-nums text-tertiary">{coa.code}</p>
+                                                                            <p className="text-sm text-primary">{coa.name}</p>
+                                                                        </div>
                                                                     ) : <span className="text-sm text-tertiary">Uncategorized</span>}
                                                                 </td>
-                                                                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                                                    <div className="flex flex-wrap items-center gap-1">
-                                                                        {item.labels.map((labelId) => {
-                                                                            const lbl = RD_LABELS.find((l) => l.id === labelId);
-                                                                            return lbl ? (
-                                                                                <Badge key={labelId} color={lbl.color as any} size="sm" type="pill-color">
-                                                                                    {lbl.label}
-                                                                                </Badge>
-                                                                            ) : null;
-                                                                        })}
-                                                                        {item.labels.length === 0 && <span className="text-xs text-quaternary">—</span>}
-                                                                    </div>
+                                                                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                                                                    {(() => {
+                                                                        const isLabelOpen = openLabelDropdown === item.id;
+                                                                        return (
+                                                                            <div className="flex min-w-[120px] flex-wrap items-center justify-end gap-1">
+                                                                                {item.labels.map((labelId) => {
+                                                                                    const lbl = RD_LABELS.find((l) => l.id === labelId);
+                                                                                    return lbl ? (
+                                                                                        <Badge key={labelId} color={lbl.color as any} size="sm" type="pill-color">
+                                                                                            {lbl.label}
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => toggleRdLabel(item.id, labelId)}
+                                                                                                className="ml-1 -mr-0.5 inline-flex items-center justify-center rounded-full opacity-60 transition hover:opacity-100"
+                                                                                            >
+                                                                                                <XClose className="size-3" />
+                                                                                            </button>
+                                                                                        </Badge>
+                                                                                    ) : null;
+                                                                                })}
+                                                                                <div className="relative">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setOpenLabelDropdown(isLabelOpen ? null : item.id)}
+                                                                                        className="flex size-5 items-center justify-center rounded-full border border-dashed border-tertiary text-tertiary transition hover:border-secondary hover:bg-secondary hover:text-secondary"
+                                                                                    >
+                                                                                        <Plus className="size-3" />
+                                                                                    </button>
+                                                                                    {isLabelOpen && (
+                                                                                        <>
+                                                                                            <div className="fixed inset-0 z-10" onClick={() => setOpenLabelDropdown(null)} />
+                                                                                            <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-secondary bg-primary py-1 shadow-lg">
+                                                                                                {RD_LABELS.map((lbl) => {
+                                                                                                    const isActive = item.labels.includes(lbl.id);
+                                                                                                    return (
+                                                                                                        <button
+                                                                                                            key={lbl.id}
+                                                                                                            type="button"
+                                                                                                            onClick={() => toggleRdLabel(item.id, lbl.id)}
+                                                                                                            className={cx(
+                                                                                                                "flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-xs transition hover:bg-primary_hover",
+                                                                                                                isActive && "bg-active",
+                                                                                                            )}
+                                                                                                        >
+                                                                                                            <Badge color={lbl.color as any} size="sm" type="pill-color">{lbl.label}</Badge>
+                                                                                                            {isActive && <Check className="ml-auto size-3.5 text-fg-brand-primary" />}
+                                                                                                        </button>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </div>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
                                                                 </td>
-                                                                <td className="whitespace-nowrap px-4 py-3 text-primary">{item.account}</td>
-                                                                <td className="relative px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                                                <td className="whitespace-nowrap px-3 py-2.5 text-sm text-primary">{item.account}</td>
+                                                                <td className="relative px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setOpenStatusDropdown(isOpen ? null : item.id)}
-                                                                        className={cx("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition", statusCfg.bg, statusCfg.color)}
+                                                                        className={cx("flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition", statusCfg.bg, statusCfg.color)}
                                                                     >
                                                                         {statusCfg.label}
                                                                         <ChevronDown className={cx("size-3 transition", isOpen && "rotate-180")} />
@@ -1824,12 +1884,6 @@ function TaxPlanningPage() {
                                                                         </>
                                                                     )}
                                                                 </td>
-                                                                <td className="max-w-[240px] px-4 py-3">
-                                                                    <div className="flex items-start gap-1.5">
-                                                                        <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
-                                                                        <p className="text-xs leading-relaxed text-tertiary">{item.aiReasoning}</p>
-                                                                    </div>
-                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
@@ -1847,129 +1901,231 @@ function TaxPlanningPage() {
             </Tabs>
 
             {/* ── Employee / Contractor Detail Slideout ── */}
-            <SlideoutMenu isDismissable isOpen={selectedPersonId !== null} onOpenChange={(open) => { if (!open) setSelectedPersonId(null); }} className="max-w-[560px]">
+            <SlideoutMenu isDismissable isOpen={selectedPersonId !== null} onOpenChange={(open) => { if (!open) { setSelectedPersonId(null); setEditingPerson(null); } }} modalClassName="max-w-[560px]">
                 {({ close }) => {
                     const allPeople = [...rdEmployees, ...rdContractors];
                     const person = allPeople.find((p) => p.id === selectedPersonId);
                     if (!person) return null;
                     const details = RD_PERSON_DETAILS[person.id];
                     const isContractor = person.id.startsWith("c");
+                    const isEditing = editingPerson !== null;
+
+                    const personId = person.id;
+
+                    function startEditing() {
+                        if (!person) return;
+                        setEditingPerson({
+                            name: person.name,
+                            title: person.title,
+                            country: person.country,
+                            contractAmount: String(person.contractAmount),
+                            rdPercent: String(person.rdPercent),
+                            email: details?.email ?? "",
+                            phone: details?.phone ?? "",
+                            address: details?.address ?? "",
+                            department: details?.department ?? "",
+                            startDate: details?.startDate ?? "",
+                            ein: details?.ein ?? "",
+                        });
+                    }
+
+                    function saveEditing() {
+                        if (!editingPerson) return;
+                        const newPercent = Math.max(0, Math.min(100, Math.round(Number(editingPerson.rdPercent) || 0)));
+                        const newContract = Math.max(0, Number(editingPerson.contractAmount) || 0);
+                        const updater = (prev: typeof rdEmployees) => prev.map((r) =>
+                            r.id === personId ? {
+                                ...r,
+                                name: editingPerson.name,
+                                title: editingPerson.title,
+                                country: editingPerson.country,
+                                contractAmount: newContract,
+                                rdPercent: newPercent,
+                                qualified: Math.round(newContract * newPercent / 100),
+                            } : r,
+                        );
+                        if (isContractor) setRdContractors(updater);
+                        else setRdEmployees(updater);
+
+                        if (details) {
+                            Object.assign(details, {
+                                email: editingPerson.email,
+                                phone: editingPerson.phone,
+                                address: editingPerson.address,
+                                department: editingPerson.department,
+                                startDate: editingPerson.startDate,
+                                ...(isContractor ? { ein: editingPerson.ein } : {}),
+                            });
+                        }
+                        setEditingPerson(null);
+                    }
+
+                    function updateField(field: string, value: string) {
+                        setEditingPerson((prev) => prev ? { ...prev, [field]: value } : prev);
+                    }
+
                     return (
                         <div className="flex size-full flex-col">
                             {/* Header */}
                             <header className="relative w-full px-6 pt-6 pb-4">
+                                {isEditing && (
+                                    <button type="button" className="mb-3 flex items-center gap-1 text-sm font-medium text-tertiary transition hover:text-primary" onClick={() => setEditingPerson(null)}>
+                                        <ArrowLeft className="size-4" />
+                                        Back
+                                    </button>
+                                )}
                                 <div className="flex items-center gap-3 pr-8">
                                     <div className={cx("flex size-10 items-center justify-center rounded-lg", isContractor ? "bg-warning-secondary" : "bg-brand-secondary")}>
                                         {isContractor ? <Building07 className="size-5 text-fg-warning-primary" /> : <User01 className="size-5 text-fg-brand-primary" />}
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-semibold text-primary">{person.name}</h2>
-                                        <p className="text-sm text-tertiary">{person.title}</p>
+                                        <h2 className="text-lg font-semibold text-primary">{isEditing ? `Edit ${isContractor ? "Contractor" : "Employee"}` : person.name}</h2>
+                                        <p className="text-sm text-tertiary">{isEditing ? person.name : person.title}</p>
                                     </div>
                                 </div>
-                                <CloseButton size="md" className="absolute top-3 right-3 shrink-0" onClick={close} />
+                                {!isEditing && (
+                                    <CloseButton size="md" className="absolute top-3 right-3 shrink-0" onClick={close} />
+                                )}
                             </header>
 
                             {/* Scrollable content */}
                             <div className="flex-1 overflow-y-auto px-6 pb-5">
-                                <div className="space-y-5">
-                                    {/* R&D Summary */}
-                                    <div className="flex items-center justify-between rounded-xl border border-secondary bg-secondary px-4 py-3">
-                                        <div>
-                                            <p className="text-xs text-tertiary">Qualified R&D Amount</p>
-                                            <p className="mt-0.5 text-2xl font-semibold tabular-nums tracking-tight text-primary">${person.qualified.toLocaleString()}</p>
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1.5">
-                                            <Badge color="brand" size="sm" type="pill-color">{person.rdPercent}% R&D</Badge>
-                                            <Badge color={isContractor ? "warning" : "blue"} size="sm" type="pill-color">{isContractor ? "Contractor" : "Employee"}</Badge>
-                                        </div>
-                                    </div>
-
-                                    {/* Details grid */}
-                                    <div className="space-y-2">
-                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Details</h3>
-                                        <div className="divide-y divide-secondary rounded-xl border border-secondary">
-                                            {details && (
-                                                <>
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary"><Mail01 className="size-3.5 text-fg-quaternary" />Email</span>
-                                                        <span className="text-sm font-medium text-primary">{details.email}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary"><Phone className="size-3.5 text-fg-quaternary" />Phone</span>
-                                                        <span className="text-sm font-medium text-primary">{details.phone}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary"><MarkerPin01 className="size-3.5 text-fg-quaternary" />Location</span>
-                                                        <span className="text-sm font-medium text-primary">{details.address}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary"><Building07 className="size-3.5 text-fg-quaternary" />Department</span>
-                                                        <span className="text-sm font-medium text-primary">{details.department}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary"><Calendar className="size-3.5 text-fg-quaternary" />Start Date</span>
-                                                        <span className="text-sm font-medium text-primary">{details.startDate}</span>
-                                                    </div>
-                                                    {details.ein && (
-                                                        <div className="flex items-center justify-between px-3 py-2.5">
-                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><Hash01 className="size-3.5 text-fg-quaternary" />EIN</span>
-                                                            <span className="text-sm font-medium text-primary">{details.ein}</span>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                            <div className="flex items-center justify-between px-3 py-2.5">
-                                                <span className="flex items-center gap-2 text-sm text-tertiary"><Globe01 className="size-3.5 text-fg-quaternary" />Country</span>
-                                                <span className="text-sm font-medium text-primary">{person.country}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between px-3 py-2.5">
-                                                <span className="flex items-center gap-2 text-sm text-tertiary"><CurrencyDollar className="size-3.5 text-fg-quaternary" />Contract Amount</span>
-                                                <span className="text-sm font-medium text-primary">${person.contractAmount.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between px-3 py-2.5">
-                                                <span className="flex items-center gap-2 text-sm text-tertiary"><Percent03 className="size-3.5 text-fg-quaternary" />R&D Allocation</span>
-                                                <span className="text-sm font-medium text-brand-secondary">{person.rdPercent}%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* R&D Projects */}
-                                    {details && details.projects.length > 0 && (
+                                {isEditing ? (
+                                    <div className="space-y-5">
+                                        {/* Personal Info */}
                                         <div className="space-y-2">
-                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">R&D Projects</h3>
+                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Personal Information</h3>
+                                            <div className="space-y-3">
+                                                <Input label="Full Name" value={editingPerson.name} onChange={(v: string) => updateField("name", v)} icon={User01} />
+                                                <Input label="Title" value={editingPerson.title} onChange={(v: string) => updateField("title", v)} />
+                                                <Input label="Email" value={editingPerson.email} onChange={(v: string) => updateField("email", v)} icon={Mail01} />
+                                                <Input label="Phone" value={editingPerson.phone} onChange={(v: string) => updateField("phone", v)} icon={Phone} />
+                                                <Input label="Location" value={editingPerson.address} onChange={(v: string) => updateField("address", v)} icon={MarkerPin01} />
+                                                <Input label="Department" value={editingPerson.department} onChange={(v: string) => updateField("department", v)} icon={Building07} />
+                                                <Input label="Start Date" value={editingPerson.startDate} onChange={(v: string) => updateField("startDate", v)} icon={Calendar} />
+                                                <Input label="Country" value={editingPerson.country} onChange={(v: string) => updateField("country", v)} icon={Globe01} />
+                                                {isContractor && (
+                                                    <Input label="EIN" value={editingPerson.ein} onChange={(v: string) => updateField("ein", v)} icon={Hash01} />
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Compensation & R&D */}
+                                        <div className="space-y-2">
+                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Compensation & R&D</h3>
+                                            <div className="space-y-3">
+                                                <Input label="Contract Amount ($)" value={editingPerson.contractAmount} onChange={(v: string) => updateField("contractAmount", v)} icon={CurrencyDollar} />
+                                                <Input label="R&D Allocation (%)" value={editingPerson.rdPercent} onChange={(v: string) => updateField("rdPercent", v)} icon={Percent03} hint={`Qualified amount: $${Math.round((Number(editingPerson.contractAmount) || 0) * (Number(editingPerson.rdPercent) || 0) / 100).toLocaleString()}`} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-5">
+                                        {/* R&D Summary */}
+                                        <div className="flex items-center justify-between rounded-xl border border-secondary bg-secondary px-4 py-3">
+                                            <div>
+                                                <p className="text-xs text-tertiary">Qualified R&D Amount</p>
+                                                <p className="mt-0.5 text-2xl font-semibold tabular-nums tracking-tight text-primary">${person.qualified.toLocaleString()}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5">
+                                                <Badge color="brand" size="sm" type="pill-color">{person.rdPercent}% R&D</Badge>
+                                                <Badge color={isContractor ? "warning" : "blue"} size="sm" type="pill-color">{isContractor ? "Contractor" : "Employee"}</Badge>
+                                            </div>
+                                        </div>
+
+                                        {/* Details grid */}
+                                        <div className="space-y-2">
+                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Details</h3>
                                             <div className="divide-y divide-secondary rounded-xl border border-secondary">
-                                                {details.projects.map((project) => (
-                                                    <div key={project} className="flex items-center gap-2 px-3 py-2.5">
-                                                        <CheckCircle className="size-3.5 text-fg-success-primary" />
-                                                        <span className="text-sm text-primary">{project}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* AI Insight */}
-                                    {details && (
-                                        <div className="space-y-2">
-                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI Insight</h3>
-                                            <div className="rounded-xl bg-gradient-to-r from-purple-100/60 to-blue-100/60 px-3 py-2.5">
-                                                <div className="flex items-start gap-2">
-                                                    <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
-                                                    <p className="text-xs leading-relaxed text-tertiary">{details.aiReasoning}</p>
+                                                {details && (
+                                                    <>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><Mail01 className="size-3.5 text-fg-quaternary" />Email</span>
+                                                            <span className="text-sm font-medium text-primary">{details.email}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><Phone className="size-3.5 text-fg-quaternary" />Phone</span>
+                                                            <span className="text-sm font-medium text-primary">{details.phone}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><MarkerPin01 className="size-3.5 text-fg-quaternary" />Location</span>
+                                                            <span className="text-sm font-medium text-primary">{details.address}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><Building07 className="size-3.5 text-fg-quaternary" />Department</span>
+                                                            <span className="text-sm font-medium text-primary">{details.department}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="flex items-center gap-2 text-sm text-tertiary"><Calendar className="size-3.5 text-fg-quaternary" />Start Date</span>
+                                                            <span className="text-sm font-medium text-primary">{details.startDate}</span>
+                                                        </div>
+                                                        {details.ein && (
+                                                            <div className="flex items-center justify-between px-3 py-2.5">
+                                                                <span className="flex items-center gap-2 text-sm text-tertiary"><Hash01 className="size-3.5 text-fg-quaternary" />EIN</span>
+                                                                <span className="text-sm font-medium text-primary">{details.ein}</span>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                                <div className="flex items-center justify-between px-3 py-2.5">
+                                                    <span className="flex items-center gap-2 text-sm text-tertiary"><Globe01 className="size-3.5 text-fg-quaternary" />Country</span>
+                                                    <span className="text-sm font-medium text-primary">{person.country}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between px-3 py-2.5">
+                                                    <span className="flex items-center gap-2 text-sm text-tertiary"><CurrencyDollar className="size-3.5 text-fg-quaternary" />Contract Amount</span>
+                                                    <span className="text-sm font-medium text-primary">${person.contractAmount.toLocaleString()}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between px-3 py-2.5">
+                                                    <span className="flex items-center gap-2 text-sm text-tertiary"><Percent03 className="size-3.5 text-fg-quaternary" />R&D Allocation</span>
+                                                    <span className="text-sm font-medium text-brand-secondary">{person.rdPercent}%</span>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
+
+                                        {/* R&D Projects */}
+                                        {details && details.projects.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">R&D Projects</h3>
+                                                <div className="divide-y divide-secondary rounded-xl border border-secondary">
+                                                    {details.projects.map((project) => (
+                                                        <div key={project} className="flex items-center gap-2 px-3 py-2.5">
+                                                            <CheckCircle className="size-3.5 text-fg-success-primary" />
+                                                            <span className="text-sm text-primary">{project}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* AI Insight */}
+                                        {details && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI Insight</h3>
+                                                <div className="rounded-xl bg-gradient-to-r from-purple-100/60 to-blue-100/60 px-3 py-2.5">
+                                                    <div className="flex items-start gap-2">
+                                                        <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
+                                                        <p className="text-xs leading-relaxed text-tertiary">{details.aiReasoning}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Footer */}
                             <footer className="w-full p-4 shadow-[inset_0px_1px_0px_0px] shadow-border-secondary md:px-6">
-                                <div className="flex items-center gap-3">
-                                    <Button color="primary" size="sm" iconLeading={Edit05} className="flex-1">Edit {isContractor ? "Contractor" : "Employee"}</Button>
-                                    <Button color="tertiary-destructive" size="sm" iconLeading={Trash01} />
-                                </div>
+                                {isEditing ? (
+                                    <div className="flex items-center gap-3">
+                                        <Button color="primary" size="sm" iconLeading={CheckCircle} className="flex-1" onClick={saveEditing}>Save Changes</Button>
+                                        <Button color="secondary" size="sm" onClick={() => setEditingPerson(null)}>Cancel</Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-3">
+                                        <Button color="primary" size="sm" iconLeading={Edit05} className="flex-1" onClick={startEditing}>Edit {isContractor ? "Contractor" : "Employee"}</Button>
+                                        <Button color="tertiary-destructive" size="sm" iconLeading={Trash01} />
+                                    </div>
+                                )}
                             </footer>
                         </div>
                     );
@@ -1977,7 +2133,7 @@ function TaxPlanningPage() {
             </SlideoutMenu>
 
             {/* ── Expense Detail Slideout ── */}
-            <SlideoutMenu isDismissable isOpen={selectedExpenseId !== null} onOpenChange={(open) => { if (!open) setSelectedExpenseId(null); }} className="max-w-[960px]" dialogClassName="overflow-hidden">
+            <SlideoutMenu isDismissable isOpen={selectedExpenseId !== null} onOpenChange={(open) => { if (!open) setSelectedExpenseId(null); }} modalClassName="max-w-[960px]" dialogClassName="overflow-hidden">
                 {({ close }) => {
                     const expense = rdExpenses.find((e) => e.id === selectedExpenseId);
                     if (!expense) return null;
