@@ -466,7 +466,7 @@ function TransactionsPage() {
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Description</th>
                                 <th className="w-[110px] whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
-                                <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Labels</th>
+                                <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
                                 {accountFilter === "all" && <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>}
                                 <th className="w-10 px-4 py-2.5" />
                             </tr>
@@ -508,7 +508,7 @@ function TransactionsPage() {
                                             )}
                                         </td>
                                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex min-w-[120px] flex-wrap items-center justify-end gap-1">
+                                            <div className="flex min-w-[120px] flex-wrap items-center gap-1">
                                                 {txn.labels.map((labelId) => {
                                                     const lbl = availableLabels.find((l) => l.id === labelId);
                                                     return lbl ? (

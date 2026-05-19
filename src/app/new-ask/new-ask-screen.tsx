@@ -3,10 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Attachment01, ArrowUp, ChevronLeft, Stars01 } from "@untitledui/icons";
 import { cx } from "@/utils/cx";
+import {
+    CASHFLOW_AT_RISK_AR,
+    CASHFLOW_TAX_RESERVE_SUGGESTION,
+    CASHFLOW_TIGHTEST_DAY_BALANCE,
+    CashflowForecastCard,
+    fmtUsd,
+} from "./cashflow-forecast-card";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Sender = "user" | "system" | "agent";
+type MessageKind = "text" | "cashflow-forecast";
 
 interface Message {
     id: string;
@@ -14,6 +22,7 @@ interface Message {
     text: string;
     time: string;
     streaming?: boolean;
+    kind?: MessageKind;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,9 +31,19 @@ function getTime() {
     return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-const SUGGESTIONS = ["I need help with my tax return", "Can you review my expenses?", "Question about a deduction"];
+const SUGGESTIONS = [
+    "Show me my cashflow forecast for the next 30 days",
+    "I need help with my tax return",
+    "Can you review my expenses?",
+    "Question about a deduction",
+];
 
 const SYSTEM_ACK = "Numix Team will be notified. Someone will follow up shortly.";
+
+const CASHFLOW_TRIGGER = "show me my cashflow forecast for the next 30 days";
+
+const CASHFLOW_INTRO =
+    "Here's your projected cashflow for May 1 – May 30, based on confirmed recurring revenue, open invoices, scheduled payroll, and your typical monthly spend.";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -53,16 +72,36 @@ function SystemBubble({ message }: { message: Message }) {
 }
 
 function AgentBubble({ message }: { message: Message }) {
+    const isCashflow = message.kind === "cashflow-forecast" && !message.streaming;
     return (
         <div className="flex items-start gap-3">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-solid text-xs font-semibold text-white">NT</div>
-            <div className="max-w-md rounded-2xl rounded-tl-sm border border-secondary bg-primary px-4 py-3 shadow-xs">
+            <div className={cx("rounded-2xl rounded-tl-sm border border-secondary bg-primary px-4 py-3 shadow-xs", isCashflow ? "max-w-2xl flex-1" : "max-w-md")}>
                 <p className="mb-0.5 text-xs font-semibold text-tertiary">Numix Team</p>
-                <p className="text-sm text-primary">
+                <p className="text-sm leading-relaxed text-primary">
                     {message.text}
                     {message.streaming && <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-brand-solid align-middle" />}
                 </p>
-                {!message.streaming && <p className="mt-1 text-xs text-tertiary">{message.time}</p>}
+                {isCashflow && (
+                    <>
+                        <CashflowForecastCard />
+                        <p className="mt-4 text-sm leading-relaxed text-primary">A few things worth flagging:</p>
+                        <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-primary">
+                            <li>
+                                <span className="font-medium">May 15 will be your tightest day</span> — payroll lands the same week as the quarterly tax payment. You&apos;ll dip to roughly{" "}
+                                <span className="font-medium">{fmtUsd(CASHFLOW_TIGHTEST_DAY_BALANCE)}</span> before the Northwind renewal hits on May 14.
+                            </li>
+                            <li>
+                                About <span className="font-medium">{fmtUsd(CASHFLOW_AT_RISK_AR)}</span> of expected inflow depends on outstanding invoices clearing on time. The Acme invoice is 12 days from due — worth a polite nudge this week.
+                            </li>
+                            <li>
+                                You&apos;re still tracking ahead of last month by ~18% on net cash. Want me to set aside an additional{" "}
+                                <span className="font-medium">{fmtUsd(CASHFLOW_TAX_RESERVE_SUGGESTION)}</span> into the tax reserve account?
+                            </li>
+                        </ul>
+                    </>
+                )}
+                {!message.streaming && <p className="mt-2 text-xs text-tertiary">{message.time}</p>}
             </div>
         </div>
     );
@@ -125,6 +164,20 @@ function useChat() {
 
         const agentId = crypto.randomUUID();
         setMessages((prev) => [...prev, { id: agentId, sender: "agent", text: "", time, streaming: true }]);
+
+        // Intercept the cashflow demo question with a hardcoded rich response
+        if (text.trim().toLowerCase() === CASHFLOW_TRIGGER) {
+            await new Promise((r) => setTimeout(r, 700));
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.id === agentId
+                        ? { ...m, kind: "cashflow-forecast", text: CASHFLOW_INTRO, streaming: false, time: getTime() }
+                        : m,
+                ),
+            );
+            setIsLoading(false);
+            return;
+        }
 
         try {
             // Build proper multi-turn conversation history (user + assistant turns)

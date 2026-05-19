@@ -95,7 +95,7 @@ type CreditStatus = "claimed" | "eligible" | "in-progress";
 
 const CREDIT_STATUS_CONFIG = {
     "claimed": { label: "Claimed", color: "text-success-primary", dot: "bg-fg-success-primary" },
-    "eligible": { label: "Eligible", color: "text-brand-primary", dot: "bg-fg-brand-primary" },
+    "eligible": { label: "Not started", color: "text-tertiary", dot: "bg-fg-tertiary" },
     "in-progress": { label: "CPA reviewing", color: "text-warning-primary", dot: "bg-fg-warning-primary" },
 };
 
@@ -125,10 +125,10 @@ const RD_BREAKDOWN = [
 ];
 
 const RD_EMPLOYEES = [
-    { id: "e1", name: "Sarah Chen", title: "Senior Software Engineer", country: "US", qualified: 78400, contractAmount: 145000, rdPercent: 54 },
+    { id: "e1", name: "Sarah Chen", title: "Senior Software Engineer", country: "US", qualified: 78300, contractAmount: 145000, rdPercent: 54 },
     { id: "e2", name: "Marcus Johnson", title: "ML Engineer", country: "US", qualified: 112000, contractAmount: 160000, rdPercent: 70 },
     { id: "e3", name: "Emily Rodriguez", title: "Data Scientist", country: "US", qualified: 52500, contractAmount: 125000, rdPercent: 42 },
-    { id: "e4", name: "David Kim", title: "Backend Engineer", country: "US", qualified: 91200, contractAmount: 130000, rdPercent: 70 },
+    { id: "e4", name: "David Kim", title: "Backend Engineer", country: "US", qualified: 91000, contractAmount: 130000, rdPercent: 70 },
     { id: "e5", name: "Lisa Wang", title: "Product Engineer", country: "US", qualified: 33600, contractAmount: 120000, rdPercent: 28 },
 ];
 
@@ -1425,8 +1425,9 @@ function TaxPlanningPage() {
                                 <h3 className="text-lg font-semibold text-primary">2024 Tax Credits</h3>
                                 {(() => {
                                     const parseAmount = (s: string) => Number(s.replace(/[$,]/g, "")) || 0;
-                                    const totalCredits = TAX_CREDITS.reduce((sum, c) => sum + parseAmount(c.amount), 0);
-                                    const claimedCredits = TAX_CREDITS.filter(c => c.creditStatus === "claimed").reduce((sum, c) => sum + parseAmount(c.amount), 0);
+                                    const rdTotal = rdEmployees.reduce((s, r) => s + r.qualified, 0) + rdContractors.reduce((s, r) => s + r.qualified, 0) + rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + Math.abs(e.amount), 0);
+                                    const totalCredits = TAX_CREDITS.reduce((sum, c) => sum + (c.id === "rd" ? rdTotal : parseAmount(c.amount)), 0);
+                                    const claimedCredits = TAX_CREDITS.filter(c => c.creditStatus === "claimed").reduce((sum, c) => sum + (c.id === "rd" ? rdTotal : parseAmount(c.amount)), 0);
                                     return (
                                         <div className="flex items-center gap-4">
                                             <div className="text-right">
@@ -1533,7 +1534,9 @@ function TaxPlanningPage() {
                                                             "text-sm font-bold tabular-nums",
                                                             credit.creditStatus === "claimed" ? "text-success-primary" :
                                                             credit.creditStatus === "in-progress" ? "text-warning-primary" : "text-quaternary",
-                                                        )}>{credit.amount}</p>
+                                                        )}>{credit.id === "rd"
+                                                            ? `$${(rdEmployees.reduce((s, r) => s + r.qualified, 0) + rdContractors.reduce((s, r) => s + r.qualified, 0) + rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + Math.abs(e.amount), 0)).toLocaleString()}`
+                                                            : credit.amount}</p>
                                                         <p className={cx(
                                                             "text-[10px] font-medium leading-none",
                                                             credit.creditStatus === "claimed" ? "text-success-primary/70" :
@@ -1578,47 +1581,56 @@ function TaxPlanningPage() {
                             </button>
 
                             <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
-                                {/* Header with total */}
-                                <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
+                                {/* Header */}
+                                <div className="flex items-center justify-between px-6 py-4">
                                     <div>
                                         <h3 className="text-lg font-semibold text-primary">R&D Tax Credit Claim</h3>
                                         <p className="mt-0.5 text-xs text-tertiary">Acme Technologies Inc. &middot; 2024</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-xs text-tertiary">Total Estimated Credit</p>
+                                        <p className="text-xs text-tertiary">Total Qualified</p>
                                         <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-success-primary">
-                                            ${(rdEmployees.reduce((s, r) => s + r.qualified, 0) + rdContractors.reduce((s, r) => s + r.qualified, 0) + rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + e.amount, 0)).toLocaleString()}
+                                            ${(rdEmployees.reduce((s, r) => s + r.qualified, 0)
+                                                + rdContractors.reduce((s, r) => s + r.qualified, 0)
+                                                + rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + Math.abs(e.amount), 0)
+                                            ).toLocaleString()}
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* Tabs */}
-                                <div className="border-b border-secondary">
-                                    <div className="flex gap-0 px-6">
-                                        {([
-                                            { id: "employees" as const, label: "Employees", count: RD_EMPLOYEES.length },
-                                            { id: "contractors" as const, label: "Contractors", count: RD_CONTRACTORS.length },
-                                            { id: "expenses" as const, label: "Expenses", count: RD_EXPENSE_ITEMS.length },
-                                        ]).map((tab) => (
+                                {/* Tab cards */}
+                                <div className="grid grid-cols-3 gap-3 border-b border-secondary px-6 pb-4">
+                                    {([
+                                        { id: "employees" as const, label: "Employees", count: rdEmployees.length, amount: rdEmployees.reduce((s, r) => s + r.qualified, 0) },
+                                        { id: "contractors" as const, label: "Contractors", count: rdContractors.length, amount: rdContractors.reduce((s, r) => s + r.qualified, 0) },
+                                        { id: "expenses" as const, label: "Expenses", count: rdExpenses.filter((e) => e.rdStatus === "qualified").length, amount: rdExpenses.filter((e) => e.rdStatus === "qualified").reduce((s, e) => s + Math.abs(e.amount), 0) },
+                                    ]).map((tab) => {
+                                        const isActive = rdClaimTab === tab.id;
+                                        return (
                                             <button
                                                 key={tab.id}
                                                 type="button"
-                                                className={cx(
-                                                    "flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition",
-                                                    rdClaimTab === tab.id
-                                                        ? "border-brand-solid text-brand-secondary"
-                                                        : "border-transparent text-tertiary hover:text-secondary",
-                                                )}
                                                 onClick={() => setRdClaimTab(tab.id)}
+                                                className={cx(
+                                                    "rounded-xl border px-4 py-3 text-left transition",
+                                                    isActive ? "border-brand bg-brand-primary_alt" : "border-secondary bg-secondary hover:border-brand/50",
+                                                )}
                                             >
-                                                {tab.label}
-                                                <span className={cx(
-                                                    "rounded-full px-2 py-0.5 text-xs font-medium",
-                                                    rdClaimTab === tab.id ? "bg-brand-primary_alt text-brand-secondary" : "bg-secondary text-tertiary",
-                                                )}>{tab.count}</span>
+                                                <div className="flex items-center justify-between">
+                                                    <span className={cx("flex items-center gap-1.5 text-base font-semibold", isActive ? "text-brand-secondary" : "text-primary")}>
+                                                        {tab.label}
+                                                        <span className={cx("inline-flex size-5 items-center justify-center rounded-full text-xs font-medium", isActive ? "bg-primary text-brand-secondary" : "bg-primary text-tertiary")}>{tab.count}</span>
+                                                    </span>
+                                                    <div className="text-right">
+                                                        <p className={cx("text-[10px]", isActive ? "text-brand-secondary/60" : "text-quaternary")}>Total qualified</p>
+                                                        <p className={cx("text-sm font-bold tabular-nums", isActive ? "text-brand-secondary" : "text-primary")}>
+                                                            ${tab.amount.toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             </button>
-                                        ))}
-                                    </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Tab content */}
@@ -1751,7 +1763,7 @@ function TaxPlanningPage() {
                                                         <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Description</th>
                                                         <th className="w-[100px] whitespace-nowrap px-3 py-2 text-right text-xs font-medium text-tertiary">Amount</th>
                                                         <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Chart of Account</th>
-                                                        <th className="w-[140px] whitespace-nowrap px-3 py-2 text-right text-xs font-medium text-tertiary">Labels</th>
+                                                        <th className="w-[140px] whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Labels</th>
                                                         <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">Account</th>
                                                         <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-tertiary">R&D Status</th>
                                                     </tr>
@@ -1795,7 +1807,7 @@ function TaxPlanningPage() {
                                                                     {(() => {
                                                                         const isLabelOpen = openLabelDropdown === item.id;
                                                                         return (
-                                                                            <div className="flex min-w-[120px] flex-wrap items-center justify-end gap-1">
+                                                                            <div className="flex min-w-[120px] flex-wrap items-center gap-1">
                                                                                 {item.labels.map((labelId) => {
                                                                                     const lbl = RD_LABELS.find((l) => l.id === labelId);
                                                                                     return lbl ? (
