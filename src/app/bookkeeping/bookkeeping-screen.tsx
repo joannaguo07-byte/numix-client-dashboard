@@ -57,20 +57,26 @@ import { cx } from "@/utils/cx";
 
 export type BookkeepingPage = "ap" | "ar" | "transactions" | "reports";
 
-type NavOpts = { taxIntent?: { tab?: "expenses" | "credits"; credit?: string } };
+type NavOpts = {
+    taxIntent?: { tab?: "expenses" | "credits"; credit?: string };
+    askPrompt?: string;
+};
 
 interface BookkeepingScreenProps {
     page?: BookkeepingPage;
     onNavigate?: (panel: string, opts?: NavOpts) => void;
-    // Fires when the user adds the R&D §41 label to a transaction. Used by
-    // the host (NumixScreen) to mirror the change into Tax Planning's R&D
+    // Fires when the user toggles the R&D §41 label on a transaction.
+    // isAdding=true when they're adding it, false when removing. The host
+    // (NumixScreen) uses this to mirror the change into Tax Planning's R&D
     // table and append a note to the Ask My Accountant chat history.
-    onRdLabel?: (txnId: string, description: string) => void;
-    // Transaction ids the host has remembered as R&D-labelled. When the
-    // user navigates away and back to this page, the local state would
-    // otherwise reset; this prop re-applies the label so the labelling
-    // survives in-app navigation (full URL reload still clears it).
+    onRdLabel?: (txnId: string, description: string, isAdding: boolean) => void;
+    // Cross-page state for R&D labels. linkedRdTxnIds = ids the user has
+    // labelled "rd" (overrides default no-rd); unlinkedRdTxnIds = ids the
+    // user has explicitly un-labelled (overrides default has-rd). Re-applied
+    // on mount so in-app navigation preserves edits. Full URL reload resets
+    // both sets back to empty.
     linkedRdTxnIds?: Set<string>;
+    unlinkedRdTxnIds?: Set<string>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -275,35 +281,84 @@ const AR_INVOICES = [
     { id: "INV-1037", client: "Acme Corp", description: "Enterprise License - Q1", amount: 24000.00, issued: "Dec 1, 2025", dueDate: "Jan 1, 2026", status: "paid" as const },
 ];
 
+// Derives the "why flagged" reasons and "what to confirm" checklist for a
+// transaction that's below the auto-approve confidence threshold. Reasons
+// surface the trigger behind the flag; confirm items frame the decision so
+// the user knows what specifically they're approving (not just "click yes").
+function getReviewContext(txn: { confidence: number; labels: string[]; coaCode: string; amount: number }) {
+    const reasons: string[] = [];
+    const confirmItems: string[] = [];
+
+    reasons.push(`AI confidence is ${txn.confidence}%, below the 90% auto-approve threshold`);
+
+    const hasRd = txn.labels.includes("rd");
+    const isTravel = txn.coaCode === "68300";
+    const hasDisabledAccess = txn.labels.includes("disabled-access");
+
+    if (hasRd) {
+        reasons.push("R&D §41 claims require documentation for audit defense");
+        confirmItems.push("This expense was primarily for R&D activity, not sales, conference, or general business");
+        confirmItems.push("You have supporting documentation on file (itinerary, project notes, or contract)");
+    }
+    if (isTravel && !hasRd) {
+        reasons.push("Travel expenses are commonly misclassified across R&D, Sales, and General categories");
+        confirmItems.push("The trip purpose matches the assigned category");
+    }
+    if (isTravel && hasRd) {
+        reasons.push("Travel-as-R&D is one of the highest audit-risk categories");
+    }
+    if (hasDisabledAccess) {
+        reasons.push("ADA accessibility credits (IRC §44) require improvements meet specific criteria");
+        confirmItems.push("Improvements meet ADA accessibility standards and were not for general renovation");
+    }
+    if (Math.abs(txn.amount) >= 1000) {
+        reasons.push(`Amount of $${Math.abs(txn.amount).toLocaleString()} is above the $1,000 high-value review band`);
+    }
+
+    if (confirmItems.length === 0) {
+        confirmItems.push("The category and labels above match the actual purpose of the expense");
+    }
+
+    return { reasons, confirmItems };
+}
+
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
-function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string) => void; linkedRdTxnIds?: Set<string> } = {}) {
+function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxnIds }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string, isAdding: boolean) => void; linkedRdTxnIds?: Set<string>; unlinkedRdTxnIds?: Set<string> } = {}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
     // Demo: every full URL reload starts from the canonical seed data. The
     // localStorage persistence used to live here; it's removed so refreshing
     // resets all label edits. In-app navigation still preserves R&D labels
-    // via the parent's `linkedRdTxnIds` (re-applied in the effect below).
+    // via the parent's `linkedRdTxnIds` / `unlinkedRdTxnIds` (re-applied
+    // in the effect below).
     const [transactions, setTransactions] = useState<typeof TRANSACTIONS_INIT>(() =>
         TRANSACTIONS_INIT.map((t) => ({ ...t })),
     );
 
-    // On mount (or when the parent's R&D-label set changes), re-apply the
-    // remembered R&D labels so navigating away and back doesn't lose them.
+    // On mount (or whenever the parent's R&D sets change), reconcile the
+    // local transactions with the cross-page state. Each set wins: linked
+    // ids get the "rd" label added; unlinked ids get it removed.
     useEffect(() => {
         if (typeof window !== "undefined") {
             window.localStorage.removeItem("numix:transactions");
         }
-        if (!linkedRdTxnIds || linkedRdTxnIds.size === 0) return;
+        const linked = linkedRdTxnIds ?? new Set<string>();
+        const unlinked = unlinkedRdTxnIds ?? new Set<string>();
+        if (linked.size === 0 && unlinked.size === 0) return;
         setTransactions((prev) =>
-            prev.map((t) =>
-                linkedRdTxnIds.has(t.id) && !t.labels.includes("rd")
-                    ? { ...t, labels: [...t.labels, "rd"] }
-                    : t,
-            ),
+            prev.map((t) => {
+                if (linked.has(t.id) && !t.labels.includes("rd")) {
+                    return { ...t, labels: [...t.labels, "rd"] };
+                }
+                if (unlinked.has(t.id) && t.labels.includes("rd")) {
+                    return { ...t, labels: t.labels.filter((l) => l !== "rd") };
+                }
+                return t;
+            }),
         );
-    }, [linkedRdTxnIds]);
+    }, [linkedRdTxnIds, unlinkedRdTxnIds]);
     const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(BANK_ACCOUNTS_INIT);
     const [accountFilter, setAccountFilter] = useState<string>("all");
     const [addBankOpen, setAddBankOpen] = useState(false);
@@ -363,7 +418,8 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigat
 
     const toggleLabel = (txnId: string, labelId: string) => {
         const txn = transactions.find((t) => t.id === txnId);
-        const isAdding = txn && !txn.labels.includes(labelId);
+        if (!txn) return;
+        const isAdding = !txn.labels.includes(labelId);
         setTransactions((prev) =>
             prev.map((t) =>
                 t.id === txnId
@@ -371,9 +427,11 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigat
                     : t,
             ),
         );
-        if (labelId === "rd" && isAdding && txn) {
-            setRdLabelInfo({ description: txn.description });
-            onRdLabel?.(txn.id, txn.description);
+        if (labelId === "rd") {
+            if (isAdding) {
+                setRdLabelInfo({ description: txn.description });
+            }
+            onRdLabel?.(txn.id, txn.description, isAdding);
         }
         setLabelDropdownOpen(null);
     };
@@ -398,7 +456,12 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigat
                                 and is now available inside your{" "}
                                 <a
                                     href="#ask-my-accountant"
-                                    onClick={(e) => { e.preventDefault(); onNavigate?.("new-ask"); }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        onNavigate?.("new-ask", {
+                                            askPrompt: `I just labeled "${rdLabelInfo.description}" as R&D §41. Walk me through how that flows into my 2024 R&D tax credit claim and how much it adds to my qualified expenses.`,
+                                        });
+                                    }}
                                     className="font-semibold text-brand-secondary underline underline-offset-2 hover:text-brand-secondary_hover"
                                 >
                                     Ask My Accountant
@@ -834,13 +897,53 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigat
                                                 </div>
                                             </div>
 
-                                            {/* AI Insight */}
+                                            {/* Why flagged + what to confirm — only when needsReview. */}
+                                            {/* These two sections do the heavy lifting: turn a vague */}
+                                            {/* "Needs Review" badge into a specific question the user */}
+                                            {/* can actually answer with judgment instead of rubber-stamping. */}
+                                            {needsReview && (() => {
+                                                const { reasons, confirmItems } = getReviewContext(selectedTxn);
+                                                return (
+                                                    <>
+                                                        <div className="space-y-2">
+                                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Why flagged</h3>
+                                                            <div className="rounded-xl border border-warning-300 bg-warning-secondary/40 p-3">
+                                                                <ul className="space-y-2">
+                                                                    {reasons.map((r, i) => (
+                                                                        <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary">
+                                                                            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-fg-warning-primary" />
+                                                                            <span>{r}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-2">
+                                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">What to confirm</h3>
+                                                            <ul className="space-y-2 rounded-xl border border-secondary bg-primary p-3">
+                                                                {confirmItems.map((item, i) => (
+                                                                    <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary">
+                                                                        <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded border border-tertiary" />
+                                                                        <span>{item}</span>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+
+                                            {/* AI's recommendation */}
                                             <div className="space-y-2">
-                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI Insight</h3>
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI&apos;s recommendation</h3>
                                                 <div className="rounded-xl bg-gradient-to-r from-purple-100/60 to-blue-100/60 px-3 py-2.5">
                                                     <div className="flex items-start gap-2">
                                                         <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
-                                                        <p className="text-xs leading-relaxed text-tertiary">{selectedTxn.aiReasoning}</p>
+                                                        <p className="text-xs leading-relaxed text-tertiary">
+                                                            {selectedTxn.aiReasoning}
+                                                            <span className="ml-1 font-medium text-secondary">Confidence: {selectedTxn.confidence}%.</span>
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1892,7 +1995,7 @@ function AccountsReceivablePage() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel, linkedRdTxnIds }: BookkeepingScreenProps) {
+export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxnIds }: BookkeepingScreenProps) {
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-secondary">
             {/* Header */}
@@ -1910,7 +2013,7 @@ export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel
 
             {/* Page content */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
-                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} onRdLabel={onRdLabel} linkedRdTxnIds={linkedRdTxnIds} />}
+                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} onRdLabel={onRdLabel} linkedRdTxnIds={linkedRdTxnIds} unlinkedRdTxnIds={unlinkedRdTxnIds} />}
                 {page === "reports" && <ReportsPage />}
                 {page === "ap" && <AccountsPayablePage />}
                 {page === "ar" && <AccountsReceivablePage />}

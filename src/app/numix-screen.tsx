@@ -1724,23 +1724,35 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
     const [conversations, setConversations] = useState(recentConversations);
     const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
-    // Activity log of transactions the user has labelled R&D §41 in
-    // Bookkeeping. Shared across panels so Tax Planning's R&D Incentive
-    // table can pick up the same items, and Ask My Accountant can show
-    // them as context in the chat history.
-    const [rdLabelActivity, setRdLabelActivity] = useState<{ id: string; txnId: string; description: string; time: string }[]>([]);
-    const linkedRdTxnIds = useMemo(() => new Set(rdLabelActivity.map((a) => a.txnId)), [rdLabelActivity]);
+    // Append-only log of every R&D §41 label change the user makes in
+    // Bookkeeping or Tax Planning. The latest action per txnId determines
+    // the current cross-page state.
+    const [rdLabelActivity, setRdLabelActivity] = useState<{ id: string; txnId: string; description: string; action: "added" | "removed"; time: string }[]>([]);
 
-    function handleRdLabelFromBookkeeping(txnId: string, description: string) {
-        setRdLabelActivity((prev) => {
-            if (prev.some((a) => a.txnId === txnId)) return prev;
-            return [...prev, {
+    // Derived current state: for each txnId the latest action wins.
+    // Bookkeeping and Tax Planning use these to override their initial data.
+    const { linkedRdTxnIds, unlinkedRdTxnIds } = useMemo(() => {
+        const latest = new Map<string, "added" | "removed">();
+        rdLabelActivity.forEach((a) => { latest.set(a.txnId, a.action); });
+        const linked = new Set<string>();
+        const unlinked = new Set<string>();
+        latest.forEach((action, txnId) => {
+            (action === "added" ? linked : unlinked).add(txnId);
+        });
+        return { linkedRdTxnIds: linked, unlinkedRdTxnIds: unlinked };
+    }, [rdLabelActivity]);
+
+    function handleRdLabelChange(txnId: string, description: string, isAdding: boolean) {
+        setRdLabelActivity((prev) => [
+            ...prev,
+            {
                 id: `rd-${txnId}-${Date.now()}`,
                 txnId,
                 description,
+                action: isAdding ? "added" : "removed",
                 time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-            }];
-        });
+            },
+        ]);
     }
 
     const direction = useRef<1 | -1>(1);
@@ -2115,7 +2127,7 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                         transition={slideTransition}
                         className="flex min-w-0 flex-1 overflow-hidden"
                     >
-                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : "Home"} initialPrompt={askInitialPrompt} rdLabelActivity={rdLabelActivity} />
+                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : askBackPanel === "bk-transactions" ? "Transactions" : "Home"} initialPrompt={askInitialPrompt} rdLabelActivity={rdLabelActivity} />
                     </motion.div>
                 ) : mainPanel === "conversation" && activeConversation ? (
                     <motion.div
@@ -2142,7 +2154,7 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                     </motion.div>
                 ) : mainPanel === "tax-planning" ? (
                     <motion.div key="tax-planning" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
-                        <TaxScreen page="planning" intent={taxIntent} clearIntent={() => setTaxIntent(null)} linkedRdTxnIds={linkedRdTxnIds} />
+                        <TaxScreen page="planning" intent={taxIntent} clearIntent={() => setTaxIntent(null)} linkedRdTxnIds={linkedRdTxnIds} unlinkedRdTxnIds={unlinkedRdTxnIds} onRdLabelChange={handleRdLabelChange} />
                     </motion.div>
                 ) : mainPanel === "cfo-forecast" ? (
                     <motion.div key="cfo-forecast" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
@@ -2178,10 +2190,15 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                             page="transactions"
                             onNavigate={(p, opts) => {
                                 if (opts?.taxIntent) setTaxIntent(opts.taxIntent);
+                                if (opts?.askPrompt) {
+                                    setAskInitialPrompt(opts.askPrompt);
+                                    setAskBackPanel("bk-transactions");
+                                }
                                 goToPanel(p as MainPanel);
                             }}
-                            onRdLabel={handleRdLabelFromBookkeeping}
+                            onRdLabel={handleRdLabelChange}
                             linkedRdTxnIds={linkedRdTxnIds}
+                            unlinkedRdTxnIds={unlinkedRdTxnIds}
                         />
                     </motion.div>
                 ) : mainPanel === "bk-reports" ? (
