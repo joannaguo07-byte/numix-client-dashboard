@@ -62,6 +62,10 @@ type NavOpts = { taxIntent?: { tab?: "expenses" | "credits"; credit?: string } }
 interface BookkeepingScreenProps {
     page?: BookkeepingPage;
     onNavigate?: (panel: string, opts?: NavOpts) => void;
+    // Fires when the user adds the R&D §41 label to a transaction. Used by
+    // the host (NumixScreen) to mirror the change into Tax Planning's R&D
+    // table and append a note to the Ask My Accountant chat history.
+    onRdLabel?: (txnId: string, description: string) => void;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -268,15 +272,15 @@ const AR_INVOICES = [
 
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
-function TransactionsPage({ onNavigate }: { onNavigate?: (panel: string, opts?: NavOpts) => void } = {}) {
+function TransactionsPage({ onNavigate, onRdLabel }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string) => void } = {}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
-    const [transactions, setTransactions] = useState(() => {
+    const [transactions, setTransactions] = useState<typeof TRANSACTIONS_INIT>(() => {
         if (typeof window !== "undefined") {
             const stored = window.localStorage.getItem("numix:transactions");
             if (stored) {
-                try { return JSON.parse(stored); } catch { /* fall through */ }
+                try { return JSON.parse(stored) as typeof TRANSACTIONS_INIT; } catch { /* fall through */ }
             }
         }
         return TRANSACTIONS_INIT.map((t) => ({ ...t }));
@@ -356,6 +360,7 @@ function TransactionsPage({ onNavigate }: { onNavigate?: (panel: string, opts?: 
         );
         if (labelId === "rd" && isAdding && txn) {
             setRdLabelInfo({ description: txn.description });
+            onRdLabel?.(txn.id, txn.description);
         }
         setLabelDropdownOpen(null);
     };
@@ -1874,7 +1879,7 @@ function AccountsReceivablePage() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function BookkeepingScreen({ page = "transactions", onNavigate }: BookkeepingScreenProps) {
+export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel }: BookkeepingScreenProps) {
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-secondary">
             {/* Header */}
@@ -1892,7 +1897,7 @@ export function BookkeepingScreen({ page = "transactions", onNavigate }: Bookkee
 
             {/* Page content */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
-                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} />}
+                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} onRdLabel={onRdLabel} />}
                 {page === "reports" && <ReportsPage />}
                 {page === "ap" && <AccountsPayablePage />}
                 {page === "ar" && <AccountsReceivablePage />}
