@@ -70,6 +70,7 @@ const INTEGRATIONS: Integration[] = [
             "Click Save and send invitation",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Accountant (All Access)" },
+        logoUrl: "https://cdn.simpleicons.org/quickbooks",
     },
     {
         id: "xero",
@@ -90,6 +91,7 @@ const INTEGRATIONS: Integration[] = [
             "Click Send Invite",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Adviser" },
+        logoUrl: "https://cdn.simpleicons.org/xero",
     },
     {
         id: "mercury",
@@ -110,6 +112,7 @@ const INTEGRATIONS: Integration[] = [
             "Click Send Invite",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Bookkeeper (Read-only)" },
+        logoUrl: "https://www.google.com/s2/favicons?domain=mercury.com&sz=128",
     },
     {
         id: "chase",
@@ -130,6 +133,7 @@ const INTEGRATIONS: Integration[] = [
             "Submit and confirm via verification code",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "View Only" },
+        logoUrl: "https://www.google.com/s2/favicons?domain=chase.com&sz=128",
     },
     {
         id: "brex",
@@ -150,6 +154,7 @@ const INTEGRATIONS: Integration[] = [
             "Click Send Invite",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Bookkeeper" },
+        logoUrl: "https://cdn.simpleicons.org/brex",
     },
     {
         id: "svb",
@@ -170,6 +175,7 @@ const INTEGRATIONS: Integration[] = [
             "Click Submit",
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "View Only" },
+        logoUrl: "https://www.google.com/s2/favicons?domain=svb.com&sz=128",
     },
     {
         id: "gmail",
@@ -179,15 +185,16 @@ const INTEGRATIONS: Integration[] = [
         category: "notifications",
         tagline: "Auto-pull financial emails (invoices, receipts, IRS notices) from Gmail and Google Workspace.",
         sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
-        time: "~2 min",
+        time: "~1 min",
         priority: "recommended",
         steps: [
-            "Click \"Connect Gmail\" below",
+            "Click \"Continue with Google\" below",
             "Sign in to your Google account",
-            "Review the requested permissions (read-only, filtered)",
-            "Approve access. Numix can immediately start ingesting matched emails.",
+            "Review the read-only scopes on Google's consent screen",
+            "Click Allow. Numix immediately starts ingesting matched emails.",
         ],
         details: { name: "olivia@acme.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        logoUrl: "https://cdn.simpleicons.org/gmail",
         privacyNote: EMAIL_PRIVACY_NOTE,
     },
     {
@@ -198,15 +205,16 @@ const INTEGRATIONS: Integration[] = [
         category: "notifications",
         tagline: "Auto-pull financial emails from Outlook, Microsoft 365, and Hotmail accounts.",
         sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
-        time: "~2 min",
+        time: "~1 min",
         priority: "recommended",
         steps: [
-            "Click \"Connect Outlook\" below",
-            "Sign in with your Microsoft account",
-            "Review the requested permissions (read-only, filtered)",
-            "Approve access in the Microsoft consent dialog",
+            "Click \"Continue with Microsoft\" below",
+            "Sign in with your Microsoft 365 account",
+            "Review the read-only scopes on the Microsoft consent dialog",
+            "Click Accept. Numix immediately starts ingesting matched emails.",
         ],
         details: { name: "olivia@acme.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        logoUrl: "https://cdn.simpleicons.org/microsoftoutlook",
         privacyNote: EMAIL_PRIVACY_NOTE,
     },
     {
@@ -220,12 +228,13 @@ const INTEGRATIONS: Integration[] = [
         time: "~3 min",
         priority: "optional",
         steps: [
-            "Generate an app-specific password at appleid.apple.com",
+            "Sign in at appleid.apple.com and go to Sign-In and Security",
+            "Generate an app-specific password labelled \"Numix\"",
             "Paste the password into the field Numix shows next",
-            "Confirm the IMAP server settings",
-            "Approve the filter rules Numix will apply",
+            "Numix verifies the IMAP connection automatically",
         ],
         details: { name: "olivia@icloud.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        logoUrl: "https://cdn.simpleicons.org/icloud",
         privacyNote: EMAIL_PRIVACY_NOTE,
     },
     {
@@ -239,12 +248,13 @@ const INTEGRATIONS: Integration[] = [
         time: "~3 min",
         priority: "optional",
         steps: [
-            "Generate an app password in Yahoo Account Security",
+            "Open Yahoo Account Info → Account Security",
+            "Generate an app password labelled \"Numix\"",
             "Paste the password into the field Numix shows next",
-            "Confirm the IMAP server settings",
-            "Approve the filter rules Numix will apply",
+            "Numix verifies the IMAP connection automatically",
         ],
         details: { name: "olivia@yahoo.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        logoUrl: "https://cdn.simpleicons.org/yahoo",
         privacyNote: EMAIL_PRIVACY_NOTE,
     },
     {
@@ -258,12 +268,13 @@ const INTEGRATIONS: Integration[] = [
         time: "~2 min",
         priority: "recommended",
         steps: [
-            "Click \"Add Numix to Slack\" below",
+            "Click \"Add to Slack\" below",
             "Sign in to your Slack workspace as an Admin",
             "Choose a channel for Numix to post in (e.g. #finance)",
-            "Approve the requested permissions",
+            "Click Allow to install the Numix app",
         ],
         details: { name: "Acme Workspace", email: "numix-app@slack.com", role: "Channel: #finance" },
+        logoUrl: "https://cdn.simpleicons.org/slack",
     },
     {
         id: "sms",
@@ -310,7 +321,20 @@ const ACCESS_CATEGORIES = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function LogoBadge({ initials, color }: { initials: string; color: string }) {
+function LogoBadge({ initials, color, logoUrl }: { initials: string; color: string; logoUrl?: string }) {
+    const [imgFailed, setImgFailed] = useState(false);
+    if (logoUrl && !imgFailed) {
+        return (
+            <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-secondary bg-white">
+                <img
+                    src={logoUrl}
+                    alt=""
+                    className="size-5"
+                    onError={() => setImgFailed(true)}
+                />
+            </div>
+        );
+    }
     return (
         <div
             className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white"
@@ -321,15 +345,255 @@ function LogoBadge({ initials, color }: { initials: string; color: string }) {
     );
 }
 
+function ChannelConnectForm({
+    integration,
+    existingCount,
+    onConnected,
+}: {
+    integration: Integration;
+    existingCount: number;
+    onConnected: (identifier: string) => void;
+}) {
+    const [step, setStep] = useState<"input" | "verifying" | "success">("input");
+    // When adding a second account, start with an empty field instead of the
+    // prefilled default so the user doesn't accidentally re-add the same one.
+    const defaultEmail = existingCount > 0 ? "" : integration.details.name;
+    const [emailValue, setEmailValue] = useState(defaultEmail);
+    const [pwValue, setPwValue] = useState("");
+    const [workspaceValue, setWorkspaceValue] = useState(existingCount > 0 ? "" : "acme");
+    const [channelValue, setChannelValue] = useState(existingCount > 0 ? "" : "finance");
+    const [phoneValue, setPhoneValue] = useState(existingCount > 0 ? "" : "+1 (415) 555-0123");
+    const [codeValue, setCodeValue] = useState("");
+    const [codeSent, setCodeSent] = useState(false);
+
+    function captureIdentifier(): string {
+        if (integration.id === "slack") return `${workspaceValue}.slack.com · #${channelValue}`;
+        if (integration.id === "sms") return phoneValue;
+        return emailValue;
+    }
+
+    function simulateConnect() {
+        const identifier = captureIdentifier();
+        setStep("verifying");
+        setTimeout(() => {
+            setStep("success");
+            setTimeout(() => onConnected(identifier), 700);
+        }, 1200);
+    }
+
+    if (step === "verifying" || step === "success") {
+        return (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-secondary bg-secondary/40 px-6 py-10 text-center">
+                {step === "verifying" ? (
+                    <>
+                        <div className="size-10 animate-spin rounded-full border-2 border-secondary border-t-brand" />
+                        <p className="text-sm font-semibold text-primary">
+                            {integration.id === "gmail" || integration.id === "outlook"
+                                ? `Authorizing with ${integration.name}…`
+                                : integration.id === "slack"
+                                    ? "Installing Numix into your Slack workspace…"
+                                    : integration.id === "sms"
+                                        ? "Verifying your phone number…"
+                                        : `Verifying ${integration.name} connection…`}
+                        </p>
+                        <p className="text-xs text-tertiary">This usually takes a few seconds.</p>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex size-10 items-center justify-center rounded-full bg-success-secondary">
+                            <CheckCircle className="size-6 text-fg-success-primary" />
+                        </div>
+                        <p className="text-sm font-semibold text-primary">Connected to {integration.name}</p>
+                        <p className="text-xs text-tertiary">Numix will start syncing in the background.</p>
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    // OAuth flow (Gmail, Outlook)
+    if (integration.id === "gmail" || integration.id === "outlook") {
+        const providerLabel = integration.id === "gmail" ? "Google" : "Microsoft";
+        return (
+            <div className="space-y-4 rounded-xl border border-secondary p-5">
+                <div>
+                    <label className="text-xs font-medium text-secondary">Email address</label>
+                    <input
+                        type="email"
+                        value={emailValue}
+                        onChange={(e) => setEmailValue(e.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                        placeholder={`you@${integration.id === "gmail" ? "company.com" : "outlook.com"}`}
+                    />
+                </div>
+                <button
+                    type="button"
+                    onClick={simulateConnect}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-secondary bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-xs transition duration-100 ease-linear hover:bg-gray-50"
+                    disabled={!emailValue.trim()}
+                >
+                    {integration.logoUrl && <img src={integration.logoUrl} alt="" className="size-4" />}
+                    Continue with {providerLabel}
+                </button>
+                <p className="text-center text-xs text-tertiary">
+                    You&apos;ll be asked to review the read-only permissions Numix needs.
+                </p>
+            </div>
+        );
+    }
+
+    // IMAP + app-specific password (iCloud, Yahoo)
+    if (integration.id === "icloud-mail" || integration.id === "yahoo-mail") {
+        const helpUrl = integration.id === "icloud-mail" ? "https://appleid.apple.com" : "https://login.yahoo.com/account/security";
+        return (
+            <div className="space-y-4 rounded-xl border border-secondary p-5">
+                <div>
+                    <label className="text-xs font-medium text-secondary">Email address</label>
+                    <input
+                        type="email"
+                        value={emailValue}
+                        onChange={(e) => setEmailValue(e.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                        placeholder={integration.id === "icloud-mail" ? "you@icloud.com" : "you@yahoo.com"}
+                    />
+                </div>
+                <div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-secondary">App-specific password</label>
+                        <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-brand-secondary hover:underline">
+                            How to generate
+                        </a>
+                    </div>
+                    <input
+                        type="password"
+                        value={pwValue}
+                        onChange={(e) => setPwValue(e.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                        placeholder="xxxx-xxxx-xxxx-xxxx"
+                    />
+                </div>
+                <Button color="primary" size="md" onClick={simulateConnect} isDisabled={!emailValue.trim() || !pwValue.trim()} className="w-full">
+                    Verify and connect
+                </Button>
+            </div>
+        );
+    }
+
+    // Slack "Add to Slack" flow
+    if (integration.id === "slack") {
+        return (
+            <div className="space-y-4 rounded-xl border border-secondary p-5">
+                <div>
+                    <label className="text-xs font-medium text-secondary">Slack workspace</label>
+                    <div className="mt-1.5 flex items-center rounded-lg border border-secondary bg-primary focus-within:border-brand">
+                        <input
+                            type="text"
+                            value={workspaceValue}
+                            onChange={(e) => setWorkspaceValue(e.target.value)}
+                            className="flex-1 rounded-l-lg bg-transparent px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:outline-none"
+                            placeholder="acme"
+                        />
+                        <span className="border-l border-secondary px-3 py-2 text-sm text-tertiary">.slack.com</span>
+                    </div>
+                </div>
+                <div>
+                    <label className="text-xs font-medium text-secondary">Channel to post in</label>
+                    <div className="mt-1.5 flex items-center rounded-lg border border-secondary bg-primary focus-within:border-brand">
+                        <span className="border-r border-secondary px-3 py-2 text-sm text-tertiary">#</span>
+                        <input
+                            type="text"
+                            value={channelValue}
+                            onChange={(e) => setChannelValue(e.target.value)}
+                            className="flex-1 rounded-r-lg bg-transparent px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:outline-none"
+                            placeholder="finance"
+                        />
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={simulateConnect}
+                    disabled={!workspaceValue.trim() || !channelValue.trim()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4A154B] px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition duration-100 ease-linear hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {integration.logoUrl && (
+                        <span className="flex size-4 items-center justify-center rounded bg-white">
+                            <img src={integration.logoUrl} alt="" className="size-3" />
+                        </span>
+                    )}
+                    Add to Slack
+                </button>
+            </div>
+        );
+    }
+
+    // SMS phone + code flow
+    if (integration.id === "sms") {
+        return (
+            <div className="space-y-4 rounded-xl border border-secondary p-5">
+                <div>
+                    <label className="text-xs font-medium text-secondary">Mobile number</label>
+                    <input
+                        type="tel"
+                        value={phoneValue}
+                        onChange={(e) => setPhoneValue(e.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                        placeholder="+1 (___) ___-____"
+                        disabled={codeSent}
+                    />
+                </div>
+                {!codeSent ? (
+                    <Button color="primary" size="md" onClick={() => setCodeSent(true)} isDisabled={!phoneValue.trim()} className="w-full">
+                        Send verification code
+                    </Button>
+                ) : (
+                    <>
+                        <div>
+                            <label className="text-xs font-medium text-secondary">6-digit code</label>
+                            <input
+                                type="text"
+                                value={codeValue}
+                                onChange={(e) => setCodeValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-center text-lg font-semibold tracking-[0.5em] text-primary placeholder:tracking-normal placeholder:text-placeholder focus:border-brand focus:outline-none"
+                                placeholder="••••••"
+                                autoFocus
+                            />
+                            <p className="mt-1 text-xs text-tertiary">
+                                We sent a code to {phoneValue}.{" "}
+                                <button type="button" onClick={() => setCodeSent(false)} className="font-medium text-brand-secondary hover:underline">
+                                    Edit number
+                                </button>
+                            </p>
+                        </div>
+                        <Button color="primary" size="md" onClick={simulateConnect} isDisabled={codeValue.length !== 6} className="w-full">
+                            Verify and connect
+                        </Button>
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    // Fallback (shouldn't hit for current channel set, but keeps the type
+    // exhaustive if a new channel is added without a form variant).
+    return (
+        <Button color="primary" size="md" onClick={simulateConnect} className="w-full">
+            Connect {integration.name}
+        </Button>
+    );
+}
+
 function GrantAccessDetail({
     integration,
+    existingInstanceCount,
     onBack,
     onGranted,
 }: {
     integration: Integration;
+    existingInstanceCount: number;
     onBack: () => void;
-    onGranted: () => void;
+    onGranted: (identifier?: string) => void;
 }) {
+    const isChannel = integration.category === "notifications";
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-primary">
             {/* ── Top bar ─────────────────────────────────────────────────── */}
@@ -342,7 +606,7 @@ function GrantAccessDetail({
                 <div className="mx-auto max-w-2xl px-6 py-8">
                     {/* Page header */}
                     <div className="mb-4">
-                        <h1 className="text-2xl font-semibold text-primary">Grant Access</h1>
+                        <h1 className="text-2xl font-semibold text-primary">{isChannel ? "Connect channel" : "Grant Access"}</h1>
                     </div>
 
                     {/* Back link */}
@@ -352,21 +616,29 @@ function GrantAccessDetail({
                         className="mb-6 flex items-center gap-1.5 text-sm font-medium text-secondary transition duration-100 ease-linear hover:text-primary"
                     >
                         <ArrowLeft className="size-4" aria-hidden />
-                        Back to Grant Access
+                        Back to setup
                     </button>
 
                     {/* Integration header card */}
                     <div className="mb-6 rounded-xl border border-secondary p-5">
                         <div className="flex items-start gap-3">
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-secondary">
-                                <Key01 className="size-5 text-fg-brand-primary" aria-hidden />
-                            </div>
+                            {integration.logoUrl ? (
+                                <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-secondary bg-white">
+                                    <img src={integration.logoUrl} alt="" className="size-6" />
+                                </div>
+                            ) : (
+                                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-secondary">
+                                    <Key01 className="size-5 text-fg-brand-primary" aria-hidden />
+                                </div>
+                            )}
                             <div>
                                 <h2 className="text-lg font-semibold text-primary">
-                                    Grant Numix Access to {integration.name}
+                                    {isChannel ? `Connect ${integration.name} to Numix` : `Grant Numix Access to ${integration.name}`}
                                 </h2>
                                 <p className="mt-0.5 text-sm text-tertiary">
-                                    Follow these steps to securely authorize Numix as your accountant. This takes about {integration.time.replace("~", "")}.
+                                    {isChannel
+                                        ? `Follow these steps to link ${integration.name} so Numix can ingest financial messages. This takes about ${integration.time.replace("~", "")}.`
+                                        : `Follow these steps to securely authorize Numix as your accountant. This takes about ${integration.time.replace("~", "")}.`}
                                 </p>
                             </div>
                         </div>
@@ -389,63 +661,87 @@ function GrantAccessDetail({
                         </div>
                     )}
 
-                    {/* Steps */}
-                    <div className="mb-6">
-                        <h3 className="mb-4 text-sm font-semibold text-primary">
-                            Steps to Grant Accountant Access
-                        </h3>
-                        <div className="space-y-3">
-                            {integration.steps.map((step, i) => (
-                                <div key={i} className="flex items-start gap-3">
-                                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-secondary text-xs font-semibold text-brand-secondary">
-                                        {i + 1}
-                                    </span>
-                                    <p className="pt-1 text-sm text-secondary">{step}</p>
-                                </div>
-                            ))}
+                    {/* Channels: connect inline within Numix.
+                        Other categories: external steps to follow. */}
+                    {isChannel ? (
+                        <div className="mb-6">
+                            <h3 className="mb-4 text-sm font-semibold text-primary">
+                                {existingInstanceCount > 0 ? `Add another ${integration.name} account` : `Connect ${integration.name}`}
+                            </h3>
+                            <ChannelConnectForm
+                                integration={integration}
+                                existingCount={existingInstanceCount}
+                                onConnected={(id) => onGranted(id)}
+                            />
                         </div>
-                    </div>
+                    ) : (
+                        <div className="mb-6">
+                            <h3 className="mb-4 text-sm font-semibold text-primary">
+                                Steps to Grant Accountant Access
+                            </h3>
+                            <div className="space-y-3">
+                                {integration.steps.map((step, i) => (
+                                    <div key={i} className="flex items-start gap-3">
+                                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-secondary text-xs font-semibold text-brand-secondary">
+                                            {i + 1}
+                                        </span>
+                                        <p className="pt-1 text-sm text-secondary">{step}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    {/* Details to enter */}
-                    <div className="mb-6 rounded-xl border border-brand bg-brand-secondary p-4">
-                        <div className="mb-2 flex items-center gap-2">
-                            <InfoCircle className="size-4 text-fg-brand-primary" aria-hidden />
-                            <span className="text-sm font-semibold text-primary">Details to enter:</span>
+                    {/* Details to enter — only for invite-style integrations
+                        (accounting / banking). Channel OAuth flows don't ask
+                        the user to type anything into a third-party UI. */}
+                    {!isChannel && (
+                        <div className="mb-6 rounded-xl border border-brand bg-brand-secondary p-4">
+                            <div className="mb-2 flex items-center gap-2">
+                                <InfoCircle className="size-4 text-fg-brand-primary" aria-hidden />
+                                <span className="text-sm font-semibold text-primary">Details to enter:</span>
+                            </div>
+                            <div className="space-y-1 pl-6">
+                                <p className="text-sm text-secondary">
+                                    Name: <span className="font-semibold">{integration.details.name}</span>
+                                </p>
+                                <p className="text-sm text-secondary">
+                                    Email: <span className="font-semibold">{integration.details.email}</span>
+                                </p>
+                                <p className="text-sm text-secondary">
+                                    Role: <span className="font-semibold">{integration.details.role}</span>
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-1 pl-6">
-                            <p className="text-sm text-secondary">
-                                Name: <span className="font-semibold">{integration.details.name}</span>
-                            </p>
-                            <p className="text-sm text-secondary">
-                                Email: <span className="font-semibold">{integration.details.email}</span>
-                            </p>
-                            <p className="text-sm text-secondary">
-                                Role: <span className="font-semibold">{integration.details.role}</span>
-                            </p>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Done note */}
                     <p className="text-center text-sm text-tertiary">
-                        You&apos;re done. The platform will notify us automatically.
+                        {isChannel
+                            ? "You're done. Numix will start syncing as soon as the connection completes."
+                            : "You're done. The platform will notify us automatically."}
                     </p>
                 </div>
             </div>
 
             {/* ── Footer bar ──────────────────────────────────────────────── */}
-            <div className="shrink-0 px-6 py-4">
-                <div className="mx-auto max-w-2xl">
-                    <Button
-                        color="primary"
-                        size="lg"
-                        iconLeading={CheckCircle}
-                        onClick={onGranted}
-                        className="w-full"
-                    >
-                        I&apos;ve Granted Access
-                    </Button>
+            {/* Only invite-style integrations need this confirmation button.
+                Channel forms complete themselves once the user submits. */}
+            {!isChannel && (
+                <div className="shrink-0 px-6 py-4">
+                    <div className="mx-auto max-w-2xl">
+                        <Button
+                            color="primary"
+                            size="lg"
+                            iconLeading={CheckCircle}
+                            onClick={() => onGranted()}
+                            className="w-full"
+                        >
+                            I&apos;ve Granted Access
+                        </Button>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
@@ -458,26 +754,44 @@ interface CustomIntegration {
     category: CategoryId;
 }
 
+// A single connected account for a channel integration. e.g. user can have
+// two Gmail accounts (work + personal) both connected to Numix.
+interface ChannelInstance {
+    id: string;
+    identifier: string;
+}
+
 function CategoryRow({
     category,
     connected,
     customs,
+    channelInstances,
     onSelect,
     onAddCustom,
     onRemoveCustom,
+    onRemoveInstance,
 }: {
     category: (typeof ACCESS_CATEGORIES)[0];
     connected: Set<string>;
     customs: CustomIntegration[];
+    channelInstances: Record<string, ChannelInstance[]>;
     onSelect: (integration: Integration) => void;
     onAddCustom: (categoryId: CategoryId, name: string) => void;
     onRemoveCustom: (id: string) => void;
+    onRemoveInstance: (integrationId: string, instanceId: string) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
     const [adding, setAdding] = useState(false);
     const [addName, setAddName] = useState("");
     const integrations = INTEGRATIONS.filter((i) => i.category === category.id);
-    const connectedCount = integrations.filter((i) => connected.has(i.id)).length + customs.length;
+    // Channel integrations count by instances; non-channels count by Set membership.
+    const totalInstances = integrations
+        .filter((i) => i.category === "notifications")
+        .reduce((sum, i) => sum + (channelInstances[i.id]?.length ?? 0), 0);
+    const nonChannelConnected = integrations
+        .filter((i) => i.category !== "notifications" && connected.has(i.id))
+        .length;
+    const connectedCount = totalInstances + nonChannelConnected + customs.length;
     const hasConnection = connectedCount > 0;
     const Icon = category.icon;
 
@@ -523,34 +837,75 @@ function CategoryRow({
                     >
                         <div className="border-t border-secondary">
                             {integrations.map((integration) => {
-                                const isConnected = connected.has(integration.id);
+                                const isChannelKind = integration.category === "notifications";
+                                const instances = channelInstances[integration.id] ?? [];
+                                const isConnected = isChannelKind ? instances.length > 0 : connected.has(integration.id);
 
                                 return (
-                                    <div
-                                        key={integration.id}
-                                        className="flex items-center gap-3 border-b border-secondary px-4 py-3 last:border-b-0"
-                                    >
-                                        <LogoBadge initials={integration.initials} color={integration.color} />
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-medium text-primary">{integration.name}</p>
-                                            <p className="text-xs text-tertiary">{integration.tagline}</p>
+                                    <div key={integration.id} className="border-b border-secondary last:border-b-0">
+                                        <div className="flex items-center gap-3 px-4 py-3">
+                                            <LogoBadge initials={integration.initials} color={integration.color} logoUrl={integration.logoUrl} />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-primary">{integration.name}</p>
+                                                <p className="text-xs text-tertiary">{integration.tagline}</p>
+                                            </div>
+                                            <div className="shrink-0">
+                                                {isChannelKind ? (
+                                                    instances.length > 0 ? (
+                                                        <Button
+                                                            color="secondary"
+                                                            size="sm"
+                                                            iconLeading={Plus}
+                                                            onClick={() => onSelect(integration)}
+                                                        >
+                                                            Add another
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            color="primary"
+                                                            size="sm"
+                                                            onClick={() => onSelect(integration)}
+                                                        >
+                                                            Connect {integration.name}
+                                                        </Button>
+                                                    )
+                                                ) : isConnected ? (
+                                                    <span className="flex items-center gap-1 text-xs font-medium text-success-primary">
+                                                        <Check className="size-3.5" aria-hidden />
+                                                        Access Granted
+                                                    </span>
+                                                ) : (
+                                                    <Button
+                                                        color="primary"
+                                                        size="sm"
+                                                        onClick={() => onSelect(integration)}
+                                                    >
+                                                        Grant access to {integration.name}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="shrink-0">
-                                            {isConnected ? (
-                                                <span className="flex items-center gap-1 text-xs font-medium text-success-primary">
-                                                    <Check className="size-3.5" aria-hidden />
-                                                    Access Granted
-                                                </span>
-                                            ) : (
-                                                <Button
-                                                    color="primary"
-                                                    size="sm"
-                                                    onClick={() => onSelect(integration)}
-                                                >
-                                                    Grant access to {integration.name}
-                                                </Button>
-                                            )}
-                                        </div>
+
+                                        {/* Per-instance sub-rows for channels (Gmail x2, etc.) */}
+                                        {isChannelKind && instances.length > 0 && (
+                                            <div className="space-y-1.5 border-t border-secondary bg-secondary/30 px-4 py-3">
+                                                {instances.map((inst) => (
+                                                    <div key={inst.id} className="flex items-center gap-2.5 rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
+                                                        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-success-secondary">
+                                                            <Check className="size-3.5 text-fg-success-primary" />
+                                                        </div>
+                                                        <p className="min-w-0 flex-1 truncate text-sm text-primary">{inst.identifier}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onRemoveInstance(integration.id, inst.id)}
+                                                            className="text-xs text-quaternary transition duration-100 ease-linear hover:text-secondary"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -655,6 +1010,9 @@ export function IntegrationsSetup({
     const [activeIntegration, setActiveIntegration] = useState<Integration | null>(null);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [customs, setCustoms] = useState<CustomIntegration[]>([]);
+    // Per-integration list of connected accounts. Channels (Gmail, Slack,
+    // SMS, etc.) can have multiple instances; non-channels stay single.
+    const [channelInstances, setChannelInstances] = useState<Record<string, ChannelInstance[]>>({});
     const confirmRef = useRef<HTMLDivElement>(null);
 
     function handleAddCustom(categoryId: CategoryId, name: string) {
@@ -681,9 +1039,32 @@ export function IntegrationsSetup({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [confirmOpen]);
 
-    function handleGranted(id: string) {
+    function handleGranted(id: string, identifier?: string) {
         setConnected((prev) => new Set([...prev, id]));
+        // For channels, also track the per-instance identifier so the user
+        // can connect multiple accounts (e.g. work + personal Gmail).
+        if (identifier) {
+            const integration = INTEGRATIONS.find((i) => i.id === id);
+            if (integration?.category === "notifications") {
+                setChannelInstances((prev) => ({
+                    ...prev,
+                    [id]: [...(prev[id] ?? []), { id: `inst-${Date.now()}`, identifier }],
+                }));
+            }
+        }
         setActiveIntegration(null);
+    }
+
+    function handleRemoveInstance(integrationId: string, instanceId: string) {
+        setChannelInstances((prev) => {
+            const next = (prev[integrationId] ?? []).filter((i) => i.id !== instanceId);
+            // If no instances remain, also unmark the integration as connected
+            // so it returns to the "Connect" state.
+            if (next.length === 0) {
+                setConnected((p) => { const n = new Set(p); n.delete(integrationId); return n; });
+            }
+            return { ...prev, [integrationId]: next };
+        });
     }
 
     const allConnected = ACCESS_CATEGORIES.every((cat) =>
@@ -706,8 +1087,9 @@ export function IntegrationsSetup({
         return (
             <GrantAccessDetail
                 integration={activeIntegration}
+                existingInstanceCount={(channelInstances[activeIntegration.id] ?? []).length}
                 onBack={() => setActiveIntegration(null)}
-                onGranted={() => handleGranted(activeIntegration.id)}
+                onGranted={(identifier) => handleGranted(activeIntegration.id, identifier)}
             />
         );
     }
@@ -773,9 +1155,11 @@ export function IntegrationsSetup({
                                 category={category}
                                 connected={connected}
                                 customs={customs.filter((c) => c.category === category.id)}
+                                channelInstances={channelInstances}
                                 onSelect={setActiveIntegration}
                                 onAddCustom={handleAddCustom}
                                 onRemoveCustom={handleRemoveCustom}
+                                onRemoveInstance={handleRemoveInstance}
                             />
                         ))}
                     </div>

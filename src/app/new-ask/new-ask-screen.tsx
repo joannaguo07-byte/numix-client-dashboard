@@ -137,12 +137,25 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void; })
 
 // ─── Shared chat logic hook ───────────────────────────────────────────────────
 
-function useChat() {
-    const [messages, setMessages] = useState<Message[]>([]);
+function useChat(seedMessages?: Message[]) {
+    const [messages, setMessages] = useState<Message[]>(seedMessages ?? []);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Keep the chat in sync with externally-seeded messages (R&D label
+    // activity from Bookkeeping). New seeds are prepended above any user
+    // turns the chat may already have.
+    const seedSig = (seedMessages ?? []).map((m) => m.id).join("|");
+    useEffect(() => {
+        if (!seedMessages || seedMessages.length === 0) return;
+        setMessages((prev) => {
+            const userTurns = prev.filter((m) => !m.id.startsWith("seed-"));
+            return [...seedMessages, ...userTurns];
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seedSig]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -233,8 +246,34 @@ function useChat() {
 
 // ─── Panel (used inside the main layout) ─────────────────────────────────────
 
-export function NewAskPanel({ onBack, backLabel = "Home", initialPrompt }: { onBack?: () => void; backLabel?: string; initialPrompt?: string }) {
-    const { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown } = useChat();
+export interface RdLabelActivityEntry {
+    id: string;
+    txnId: string;
+    description: string;
+    time: string;
+}
+
+export function NewAskPanel({
+    onBack,
+    backLabel = "Home",
+    initialPrompt,
+    rdLabelActivity,
+}: {
+    onBack?: () => void;
+    backLabel?: string;
+    initialPrompt?: string;
+    rdLabelActivity?: RdLabelActivityEntry[];
+}) {
+    // Surface R&D label events from Bookkeeping as system context at the
+    // top of the chat. This lets the Numix CPA team see what the user
+    // recently flagged without the user having to repeat it.
+    const seedMessages: Message[] = (rdLabelActivity ?? []).map((a) => ({
+        id: `seed-${a.id}`,
+        sender: "system" as Sender,
+        text: `R&D §41 label added to "${a.description}". Item now appears in your R&D Incentive table.`,
+        time: a.time,
+    }));
+    const { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown } = useChat(seedMessages);
     const initialPromptSent = useRef(false);
 
     useEffect(() => {

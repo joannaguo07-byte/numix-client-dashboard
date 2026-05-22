@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "@/providers/auth-provider";
 import { getSupabase } from "@/utils/supabase";
@@ -1117,6 +1117,10 @@ function PageShell({ title, description, children }: { title: string; descriptio
 // ─── Connected summary (post-integration) ────────────────────────────────────
 
 function ConnectedSummary({ onNavigate }: { onNavigate: (panel: MainPanel, taxIntent?: { tab?: "expenses" | "credits"; credit?: string }) => void }) {
+    // Demo: starts collapsed so the home page leads with "Your next steps".
+    // Clicking the header expands the metrics grid.
+    const [expanded, setExpanded] = useState(false);
+
     const metrics = [
         { label: "Cash on hand", value: "$128,450", trend: "+2.4% this week", source: "Mercury", subLine: "$3,421 on Brex card", icon: CurrencyDollar, tone: "success" as const, onClick: () => onNavigate("bk-transactions"), hint: "View transactions" },
         { label: "Open invoices", value: "$18,300", trend: "5 invoices · 2 overdue", source: "QuickBooks", icon: ReceiptCheck, tone: "warning" as const, onClick: () => onNavigate("bk-ar"), hint: "View receivables" },
@@ -1131,8 +1135,16 @@ function ConnectedSummary({ onNavigate }: { onNavigate: (panel: MainPanel, taxIn
 
     return (
         <div className="mb-8 overflow-hidden rounded-xl border border-secondary bg-primary">
-            {/* Brand banner header. Matches CFO / Tax / Bookkeeping. */}
-            <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
+            {/* Brand banner header. Matches CFO / Tax / Bookkeeping. Click to expand/collapse. */}
+            <button
+                type="button"
+                onClick={() => setExpanded((e) => !e)}
+                className={cx(
+                    "flex w-full items-center justify-between gap-3 bg-brand-primary_alt px-6 py-4 text-left transition duration-100 ease-linear hover:bg-brand-primary_alt/80",
+                    expanded && "border-b border-brand/20",
+                )}
+                aria-expanded={expanded}
+            >
                 <div className="flex items-center gap-3">
                     <div>
                         <h3 className="text-sm font-semibold text-primary">Financial overview</h3>
@@ -1140,41 +1152,49 @@ function ConnectedSummary({ onNavigate }: { onNavigate: (panel: MainPanel, taxIn
                     </div>
                     <BadgeWithDot color="success" size="sm" type="pill-color">Live</BadgeWithDot>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-tertiary">
-                    <Clock className="size-3.5" />
-                    Synced 2 min ago
+                <div className="flex items-center gap-3 text-xs text-tertiary">
+                    <div className="flex items-center gap-1.5">
+                        <Clock className="size-3.5" />
+                        Synced 2 min ago
+                    </div>
+                    <ChevronDown
+                        className={cx("size-5 text-fg-quaternary transition-transform duration-150", expanded && "rotate-180")}
+                        aria-hidden
+                    />
                 </div>
-            </div>
+            </button>
 
             {/* Metrics grid. Each tile links to its source page. */}
-            <div className="grid grid-cols-1 divide-y divide-secondary sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-                {metrics.map((m) => {
-                    const t = toneStyles[m.tone];
-                    return (
-                        <div key={m.label} className="flex items-center justify-between gap-4 px-6 py-5">
-                            <div className="min-w-0">
-                                <p className="text-xs text-tertiary">{m.label}</p>
-                                <p className={cx("mt-1 text-2xl font-semibold tabular-nums tracking-tight", t.value)}>{m.value}</p>
-                                <p className={cx("mt-1 text-xs", t.trend)}>{m.trend}</p>
-                                {m.subLine && (
-                                    <p className="mt-0.5 text-xs text-tertiary">{m.subLine}</p>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={m.onClick}
-                                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-secondary hover:underline"
-                                >
-                                    {m.hint}
-                                    <ChevronRight className="size-3.5" />
-                                </button>
+            {expanded && (
+                <div className="grid grid-cols-1 divide-y divide-secondary sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                    {metrics.map((m) => {
+                        const t = toneStyles[m.tone];
+                        return (
+                            <div key={m.label} className="flex items-center justify-between gap-4 px-6 py-5">
+                                <div className="min-w-0">
+                                    <p className="text-xs text-tertiary">{m.label}</p>
+                                    <p className={cx("mt-1 text-2xl font-semibold tabular-nums tracking-tight", t.value)}>{m.value}</p>
+                                    <p className={cx("mt-1 text-xs", t.trend)}>{m.trend}</p>
+                                    {m.subLine && (
+                                        <p className="mt-0.5 text-xs text-tertiary">{m.subLine}</p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={m.onClick}
+                                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-secondary hover:underline"
+                                    >
+                                        {m.hint}
+                                        <ChevronRight className="size-3.5" />
+                                    </button>
+                                </div>
+                                <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-full", t.iconBg)}>
+                                    <m.icon className={cx("size-5", t.iconFg)} aria-hidden />
+                                </div>
                             </div>
-                            <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-full", t.iconBg)}>
-                                <m.icon className={cx("size-5", t.iconFg)} aria-hidden />
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }
@@ -1704,6 +1724,25 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
     const [conversations, setConversations] = useState(recentConversations);
     const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
+    // Activity log of transactions the user has labelled R&D §41 in
+    // Bookkeeping. Shared across panels so Tax Planning's R&D Incentive
+    // table can pick up the same items, and Ask My Accountant can show
+    // them as context in the chat history.
+    const [rdLabelActivity, setRdLabelActivity] = useState<{ id: string; txnId: string; description: string; time: string }[]>([]);
+    const linkedRdTxnIds = useMemo(() => new Set(rdLabelActivity.map((a) => a.txnId)), [rdLabelActivity]);
+
+    function handleRdLabelFromBookkeeping(txnId: string, description: string) {
+        setRdLabelActivity((prev) => {
+            if (prev.some((a) => a.txnId === txnId)) return prev;
+            return [...prev, {
+                id: `rd-${txnId}-${Date.now()}`,
+                txnId,
+                description,
+                time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
+            }];
+        });
+    }
+
     const direction = useRef<1 | -1>(1);
 
     const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null;
@@ -2076,7 +2115,7 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                         transition={slideTransition}
                         className="flex min-w-0 flex-1 overflow-hidden"
                     >
-                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : "Home"} initialPrompt={askInitialPrompt} />
+                        <NewAskPanel onBack={() => { setAskInitialPrompt(undefined); const back = askBackPanel; setAskBackPanel("home"); goToPanel(back); }} backLabel={askBackPanel === "cfo-make-money" ? "How to Make Money" : askBackPanel === "cfo-save-money" ? "How to Save Money" : "Home"} initialPrompt={askInitialPrompt} rdLabelActivity={rdLabelActivity} />
                     </motion.div>
                 ) : mainPanel === "conversation" && activeConversation ? (
                     <motion.div
@@ -2103,7 +2142,7 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                     </motion.div>
                 ) : mainPanel === "tax-planning" ? (
                     <motion.div key="tax-planning" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
-                        <TaxScreen page="planning" intent={taxIntent} clearIntent={() => setTaxIntent(null)} />
+                        <TaxScreen page="planning" intent={taxIntent} clearIntent={() => setTaxIntent(null)} linkedRdTxnIds={linkedRdTxnIds} />
                     </motion.div>
                 ) : mainPanel === "cfo-forecast" ? (
                     <motion.div key="cfo-forecast" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
@@ -2141,6 +2180,8 @@ export const NumixScreen = ({ connected = false }: { connected?: boolean } = {})
                                 if (opts?.taxIntent) setTaxIntent(opts.taxIntent);
                                 goToPanel(p as MainPanel);
                             }}
+                            onRdLabel={handleRdLabelFromBookkeeping}
+                            linkedRdTxnIds={linkedRdTxnIds}
                         />
                     </motion.div>
                 ) : mainPanel === "bk-reports" ? (

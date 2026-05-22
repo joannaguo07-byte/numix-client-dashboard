@@ -66,6 +66,11 @@ interface BookkeepingScreenProps {
     // the host (NumixScreen) to mirror the change into Tax Planning's R&D
     // table and append a note to the Ask My Accountant chat history.
     onRdLabel?: (txnId: string, description: string) => void;
+    // Transaction ids the host has remembered as R&D-labelled. When the
+    // user navigates away and back to this page, the local state would
+    // otherwise reset; this prop re-applies the label so the labelling
+    // survives in-app navigation (full URL reload still clears it).
+    linkedRdTxnIds?: Set<string>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -272,25 +277,33 @@ const AR_INVOICES = [
 
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
-function TransactionsPage({ onNavigate, onRdLabel }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string) => void } = {}) {
+function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string) => void; linkedRdTxnIds?: Set<string> } = {}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
-    const [transactions, setTransactions] = useState<typeof TRANSACTIONS_INIT>(() => {
-        if (typeof window !== "undefined") {
-            const stored = window.localStorage.getItem("numix:transactions");
-            if (stored) {
-                try { return JSON.parse(stored) as typeof TRANSACTIONS_INIT; } catch { /* fall through */ }
-            }
-        }
-        return TRANSACTIONS_INIT.map((t) => ({ ...t }));
-    });
+    // Demo: every full URL reload starts from the canonical seed data. The
+    // localStorage persistence used to live here; it's removed so refreshing
+    // resets all label edits. In-app navigation still preserves R&D labels
+    // via the parent's `linkedRdTxnIds` (re-applied in the effect below).
+    const [transactions, setTransactions] = useState<typeof TRANSACTIONS_INIT>(() =>
+        TRANSACTIONS_INIT.map((t) => ({ ...t })),
+    );
 
+    // On mount (or when the parent's R&D-label set changes), re-apply the
+    // remembered R&D labels so navigating away and back doesn't lose them.
     useEffect(() => {
         if (typeof window !== "undefined") {
-            window.localStorage.setItem("numix:transactions", JSON.stringify(transactions));
+            window.localStorage.removeItem("numix:transactions");
         }
-    }, [transactions]);
+        if (!linkedRdTxnIds || linkedRdTxnIds.size === 0) return;
+        setTransactions((prev) =>
+            prev.map((t) =>
+                linkedRdTxnIds.has(t.id) && !t.labels.includes("rd")
+                    ? { ...t, labels: [...t.labels, "rd"] }
+                    : t,
+            ),
+        );
+    }, [linkedRdTxnIds]);
     const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(BANK_ACCOUNTS_INIT);
     const [accountFilter, setAccountFilter] = useState<string>("all");
     const [addBankOpen, setAddBankOpen] = useState(false);
@@ -1879,7 +1892,7 @@ function AccountsReceivablePage() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel }: BookkeepingScreenProps) {
+export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel, linkedRdTxnIds }: BookkeepingScreenProps) {
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-secondary">
             {/* Header */}
@@ -1897,7 +1910,7 @@ export function BookkeepingScreen({ page = "transactions", onNavigate, onRdLabel
 
             {/* Page content */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
-                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} onRdLabel={onRdLabel} />}
+                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} onRdLabel={onRdLabel} linkedRdTxnIds={linkedRdTxnIds} />}
                 {page === "reports" && <ReportsPage />}
                 {page === "ap" && <AccountsPayablePage />}
                 {page === "ar" && <AccountsReceivablePage />}

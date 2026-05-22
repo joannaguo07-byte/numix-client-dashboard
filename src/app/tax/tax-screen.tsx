@@ -78,6 +78,10 @@ interface TaxScreenProps {
     page?: TaxPage;
     intent?: TaxPlanningIntent;
     clearIntent?: () => void;
+    // Transaction ids that the user has labelled R&D §41 in Bookkeeping.
+    // These are mirrored into the R&D Incentive table so the credit
+    // calculation includes them automatically.
+    linkedRdTxnIds?: Set<string>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -1005,7 +1009,7 @@ const RD_EXPENSES = [
 
 const TOTAL_EXPENSE_ITEMS = RD_EXPENSES.reduce((sum, g) => sum + g.items.length, 0);
 
-function TaxPlanningPage({ intent, clearIntent }: { intent?: TaxPlanningIntent; clearIntent?: () => void } = {}) {
+function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: TaxPlanningIntent; clearIntent?: () => void; linkedRdTxnIds?: Set<string> } = {}) {
     const [selectedCredit, setSelectedCredit] = useState<string | null>(intent?.credit ?? null);
     const [activeTab, setActiveTab] = useState<"expenses" | "credits">(intent?.tab ?? "expenses");
     useEffect(() => {
@@ -1024,6 +1028,26 @@ function TaxPlanningPage({ intent, clearIntent }: { intent?: TaxPlanningIntent; 
     const [rdEmployees, setRdEmployees] = useState(RD_EMPLOYEES.map((e) => ({ ...e })));
     const [rdContractors, setRdContractors] = useState(RD_CONTRACTORS.map((c) => ({ ...c })));
     const [rdExpenses, setRdExpenses] = useState(RD_EXPENSE_ITEMS.map((e) => ({ ...e })));
+
+    // When the user labels a transaction "R&D §41" in Bookkeeping, the host
+    // forwards its id here. Mirror that into the matching rdExpenses entry so
+    // the R&D Incentive table reflects the same qualified status without the
+    // user having to re-label inside Tax Planning.
+    useEffect(() => {
+        if (!linkedRdTxnIds || linkedRdTxnIds.size === 0) return;
+        setRdExpenses((prev) =>
+            prev.map((e) =>
+                linkedRdTxnIds.has(e.id)
+                    ? {
+                          ...e,
+                          labels: e.labels.includes("rd") ? e.labels : [...e.labels, "rd"],
+                          rdStatus: e.rdStatus === "qualified" ? e.rdStatus : ("qualified" as RdExpenseStatus),
+                      }
+                    : e,
+            ),
+        );
+    }, [linkedRdTxnIds]);
+
     const [rdLabelFilter, setRdLabelFilter] = useState("all");
     const [rdStatusFilter, setRdStatusFilter] = useState("all");
     const [rdSearchQuery, setRdSearchQuery] = useState("");
@@ -2370,7 +2394,7 @@ function TaxPlanningPage({ intent, clearIntent }: { intent?: TaxPlanningIntent; 
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function TaxScreen({ page = "filing", intent, clearIntent }: TaxScreenProps) {
+export function TaxScreen({ page = "filing", intent, clearIntent, linkedRdTxnIds }: TaxScreenProps) {
     const [selectedYear, setSelectedYear] = useState("2024");
     const [filingWizardOpen, setFilingWizardOpen] = useState(false);
 
@@ -2412,7 +2436,7 @@ export function TaxScreen({ page = "filing", intent, clearIntent }: TaxScreenPro
             {/* ── Page content ─────────────────────────────────────────── */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
                 {page === "filing" && <TaxFilingPage onOpenWizard={() => setFilingWizardOpen(true)} />}
-                {page === "planning" && <TaxPlanningPage intent={intent} clearIntent={clearIntent} />}
+                {page === "planning" && <TaxPlanningPage intent={intent} clearIntent={clearIntent} linkedRdTxnIds={linkedRdTxnIds} />}
             </div>
 
             {/* ── Filing wizard overlay ────────────────────────────────── */}
