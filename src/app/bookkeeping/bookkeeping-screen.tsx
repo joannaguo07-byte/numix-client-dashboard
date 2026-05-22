@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     AlertCircle,
     ArrowLeft,
@@ -57,8 +57,11 @@ import { cx } from "@/utils/cx";
 
 export type BookkeepingPage = "ap" | "ar" | "transactions" | "reports";
 
+type NavOpts = { taxIntent?: { tab?: "expenses" | "credits"; credit?: string } };
+
 interface BookkeepingScreenProps {
     page?: BookkeepingPage;
+    onNavigate?: (panel: string, opts?: NavOpts) => void;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -177,33 +180,33 @@ const AVAILABLE_BANKS = [
 const TRANSACTIONS_INIT = [
     // March 2026
     { id: "1", date: "Mar 11, 2026", month: "2026-03", description: "Stripe Payment - Customer Invoice #4521", amount: 2450.00, coaCode: "44400", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Stripe recurring invoice payment matched to customer #4521 in AR ledger" },
-    { id: "2", date: "Mar 10, 2026", month: "2026-03", description: "AWS Monthly Services", amount: -847.32, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute is used primarily for ML model training — qualifies as R&D supply expense under IRC §41" },
+    { id: "2", date: "Mar 10, 2026", month: "2026-03", description: "AWS Monthly Services", amount: -847.32, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute is used primarily for ML model training, qualifies as R&D supply expense under IRC §41" },
     { id: "3", date: "Mar 9, 2026", month: "2026-03", description: "Gusto Payroll - March", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup", "employer-contribution"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time), PFML-eligible employees, and 401(k) employer match contributions" },
-    { id: "4", date: "Mar 8, 2026", month: "2026-03", description: "Google Ads Campaign", amount: -1250.00, coaCode: "60000", account: "Checking ···4821", confidence: 92, labels: [] as string[], aiReasoning: "Advertising spend is a general business expense — not eligible for any tax credits" },
-    { id: "5", date: "Mar 7, 2026", month: "2026-03", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 97, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space — accessibility improvements may qualify under IRC §44 Disabled Access Credit" },
-    { id: "6", date: "Mar 6, 2026", month: "2026-03", description: "Client Payment - Acme Corp", amount: 8500.00, coaCode: "47900", account: "Checking ···4821", confidence: 96, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #3892 — Acme Corp consulting engagement" },
-    { id: "7", date: "Mar 5, 2026", month: "2026-03", description: "Delta Airlines - SFO to NYC", amount: -584.00, coaCode: "68300", account: "Credit Card ···7392", confidence: 88, labels: ["rd"], aiReasoning: "Travel to NYC R&D partner site for prototype testing — qualifies as R&D-related travel expense" },
-    { id: "8", date: "Mar 4, 2026", month: "2026-03", description: "Amazon Business - Office Supplies", amount: -234.67, coaCode: "64900", account: "Credit Card ···7392", confidence: 75, labels: [] as string[], aiReasoning: "General office supplies purchase — no qualifying credit indicators found" },
-    { id: "9", date: "Mar 3, 2026", month: "2026-03", description: "Zoom Pro Subscription", amount: -149.90, coaCode: "69000", account: "Credit Card ···7392", confidence: 94, labels: ["rd"], aiReasoning: "Zoom used for R&D team standups and technical design reviews — partially qualifies under IRC §41" },
-    { id: "10", date: "Mar 2, 2026", month: "2026-03", description: "Client Payment - Beta Inc", amount: 3200.00, coaCode: "44400", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4102 — Beta Inc monthly retainer" },
-    { id: "26", date: "Mar 1, 2026", month: "2026-03", description: "Uber - Team Transportation", amount: -187.50, coaCode: "68300", account: "Credit Card ···7392", confidence: 65, labels: [] as string[], aiReasoning: "Ride-sharing expense — unclear if business or personal use, needs manual verification" },
+    { id: "4", date: "Mar 8, 2026", month: "2026-03", description: "Google Ads Campaign", amount: -1250.00, coaCode: "60000", account: "Checking ···4821", confidence: 92, labels: [] as string[], aiReasoning: "Advertising spend is a general business expense, not eligible for any tax credits" },
+    { id: "5", date: "Mar 7, 2026", month: "2026-03", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 97, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space, accessibility improvements may qualify under IRC §44 Disabled Access Credit" },
+    { id: "6", date: "Mar 6, 2026", month: "2026-03", description: "Client Payment - Acme Corp", amount: 8500.00, coaCode: "47900", account: "Checking ···4821", confidence: 96, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #3892, Acme Corp consulting engagement" },
+    { id: "7", date: "Mar 5, 2026", month: "2026-03", description: "Delta Airlines - SFO to NYC", amount: -584.00, coaCode: "68300", account: "Credit Card ···7392", confidence: 88, labels: ["rd"], aiReasoning: "Travel to NYC R&D partner site for prototype testing, qualifies as R&D-related travel expense" },
+    { id: "8", date: "Mar 4, 2026", month: "2026-03", description: "Amazon Business - Office Supplies", amount: -234.67, coaCode: "64900", account: "Credit Card ···7392", confidence: 75, labels: [] as string[], aiReasoning: "General office supplies purchase, no qualifying credit indicators found" },
+    { id: "9", date: "Mar 3, 2026", month: "2026-03", description: "Zoom Pro Subscription", amount: -149.90, coaCode: "69000", account: "Credit Card ···7392", confidence: 94, labels: ["rd"], aiReasoning: "Zoom used for R&D team standups and technical design reviews, partially qualifies under IRC §41" },
+    { id: "10", date: "Mar 2, 2026", month: "2026-03", description: "Client Payment - Beta Inc", amount: 3200.00, coaCode: "44400", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4102, Beta Inc monthly retainer" },
+    { id: "26", date: "Mar 1, 2026", month: "2026-03", description: "Uber - Team Transportation", amount: -187.50, coaCode: "68300", account: "Credit Card ···7392", confidence: 65, labels: [] as string[], aiReasoning: "Ride-sharing expense, unclear if business or personal use, needs manual verification" },
     // February 2026
     { id: "11", date: "Feb 27, 2026", month: "2026-02", description: "Stripe Payment - Customer Invoice #4480", amount: 3800.00, coaCode: "44400", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Stripe recurring invoice payment matched to customer #4480 in AR ledger" },
-    { id: "12", date: "Feb 20, 2026", month: "2026-02", description: "AWS Monthly Services", amount: -812.50, coaCode: "69000", account: "Checking ···4821", confidence: 96, labels: ["rd"], aiReasoning: "AWS cloud compute for ML model training — qualifies as R&D supply expense under IRC §41" },
+    { id: "12", date: "Feb 20, 2026", month: "2026-02", description: "AWS Monthly Services", amount: -812.50, coaCode: "69000", account: "Checking ···4821", confidence: 96, labels: ["rd"], aiReasoning: "AWS cloud compute for ML model training, qualifies as R&D supply expense under IRC §41" },
     { id: "13", date: "Feb 15, 2026", month: "2026-02", description: "Gusto Payroll - February", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time) and PFML-eligible employees" },
-    { id: "14", date: "Feb 10, 2026", month: "2026-02", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space — may qualify under IRC §44" },
-    { id: "15", date: "Feb 5, 2026", month: "2026-02", description: "Figma Enterprise", amount: -450.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 91, labels: ["rd"], aiReasoning: "Design tooling used for R&D prototyping — partially qualifies under IRC §41" },
-    { id: "16", date: "Feb 3, 2026", month: "2026-02", description: "Client Payment - Gamma LLC", amount: 15000.00, coaCode: "47900", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4310 — Gamma LLC implementation fee" },
+    { id: "14", date: "Feb 10, 2026", month: "2026-02", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space, may qualify under IRC §44" },
+    { id: "15", date: "Feb 5, 2026", month: "2026-02", description: "Figma Enterprise", amount: -450.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 91, labels: ["rd"], aiReasoning: "Design tooling used for R&D prototyping, partially qualifies under IRC §41" },
+    { id: "16", date: "Feb 3, 2026", month: "2026-02", description: "Client Payment - Gamma LLC", amount: 15000.00, coaCode: "47900", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Client payment matched to Invoice #4310, Gamma LLC implementation fee" },
     // January 2026
     { id: "17", date: "Jan 28, 2026", month: "2026-01", description: "Gusto Payroll - January", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave", "retirement-startup"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time) and PFML-eligible employees" },
-    { id: "18", date: "Jan 22, 2026", month: "2026-01", description: "AWS Monthly Services", amount: -790.00, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute for ML training — qualifies as R&D supply expense" },
+    { id: "18", date: "Jan 22, 2026", month: "2026-01", description: "AWS Monthly Services", amount: -790.00, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute for ML training, qualifies as R&D supply expense" },
     { id: "19", date: "Jan 15, 2026", month: "2026-01", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space" },
     { id: "20", date: "Jan 10, 2026", month: "2026-01", description: "Client Payment - Delta Partners", amount: 5000.00, coaCode: "47900", account: "Checking ···4821", confidence: 97, labels: [] as string[], aiReasoning: "Monthly retainer payment from Delta Partners" },
-    { id: "21", date: "Jan 5, 2026", month: "2026-01", description: "Datadog Monitoring", amount: -320.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 82, labels: ["rd"], aiReasoning: "Infrastructure monitoring — partially qualifies as R&D tooling" },
+    { id: "21", date: "Jan 5, 2026", month: "2026-01", description: "Datadog Monitoring", amount: -320.00, coaCode: "69000", account: "Credit Card ···7392", confidence: 82, labels: ["rd"], aiReasoning: "Infrastructure monitoring, partially qualifies as R&D tooling" },
     // December 2025
     { id: "22", date: "Dec 28, 2025", month: "2025-12", description: "Gusto Payroll - December", amount: -12500.00, coaCode: "66000", account: "Checking ···4821", confidence: 99, labels: ["rd", "family-leave"], aiReasoning: "Payroll includes 3 engineers (60%+ R&D time)" },
     { id: "23", date: "Dec 20, 2025", month: "2025-12", description: "Year-end Client Payment - Acme Corp", amount: 18000.00, coaCode: "44400", account: "Checking ···4821", confidence: 96, labels: [] as string[], aiReasoning: "Year-end settlement payment from Acme Corp" },
-    { id: "24", date: "Dec 15, 2025", month: "2025-12", description: "Holiday Team Dinner", amount: -1200.00, coaCode: "60000", account: "Credit Card ···7392", confidence: 72, labels: [] as string[], aiReasoning: "Team event expense — not eligible for tax credits" },
+    { id: "24", date: "Dec 15, 2025", month: "2025-12", description: "Holiday Team Dinner", amount: -1200.00, coaCode: "60000", account: "Credit Card ···7392", confidence: 72, labels: [] as string[], aiReasoning: "Team event expense, not eligible for tax credits" },
     { id: "25", date: "Dec 10, 2025", month: "2025-12", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space" },
 ];
 
@@ -265,11 +268,25 @@ const AR_INVOICES = [
 
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
-function TransactionsPage() {
+function TransactionsPage({ onNavigate }: { onNavigate?: (panel: string, opts?: NavOpts) => void } = {}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
-    const [transactions, setTransactions] = useState(TRANSACTIONS_INIT.map((t) => ({ ...t })));
+    const [transactions, setTransactions] = useState(() => {
+        if (typeof window !== "undefined") {
+            const stored = window.localStorage.getItem("numix:transactions");
+            if (stored) {
+                try { return JSON.parse(stored); } catch { /* fall through */ }
+            }
+        }
+        return TRANSACTIONS_INIT.map((t) => ({ ...t }));
+    });
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("numix:transactions", JSON.stringify(transactions));
+        }
+    }, [transactions]);
     const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(BANK_ACCOUNTS_INIT);
     const [accountFilter, setAccountFilter] = useState<string>("all");
     const [addBankOpen, setAddBankOpen] = useState(false);
@@ -283,6 +300,7 @@ function TransactionsPage() {
     const [memo, setMemo] = useState("");
     const [slideoutLabelOpen, setSlideoutLabelOpen] = useState(false);
     const [docZoom, setDocZoom] = useState(100);
+    const [rdLabelInfo, setRdLabelInfo] = useState<{ description: string } | null>(null);
 
     const monthTxns = transactions.filter((t) => t.month === monthFilter);
     const totalTxns = monthTxns.length;
@@ -327,6 +345,8 @@ function TransactionsPage() {
         });
 
     const toggleLabel = (txnId: string, labelId: string) => {
+        const txn = transactions.find((t) => t.id === txnId);
+        const isAdding = txn && !txn.labels.includes(labelId);
         setTransactions((prev) =>
             prev.map((t) =>
                 t.id === txnId
@@ -334,11 +354,51 @@ function TransactionsPage() {
                     : t,
             ),
         );
+        if (labelId === "rd" && isAdding && txn) {
+            setRdLabelInfo({ description: txn.description });
+        }
+        setLabelDropdownOpen(null);
     };
 
 
     return (
         <div className="space-y-5">
+                {rdLabelInfo && (
+                    <div className="flex items-start gap-3 rounded-xl border border-brand bg-brand-primary_alt px-4 py-3.5">
+                        <InfoCircle className="mt-0.5 size-5 shrink-0 text-fg-brand-primary" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-primary">R&D §41 label saved</p>
+                            <p className="mt-0.5 text-sm text-tertiary">
+                                <span className="font-medium text-primary">&ldquo;{rdLabelInfo.description}&rdquo;</span> has been added to your{" "}
+                                <a
+                                    href="#r-and-d-incentive-flow"
+                                    onClick={(e) => { e.preventDefault(); onNavigate?.("tax-planning", { taxIntent: { tab: "credits", credit: "rd" } }); }}
+                                    className="font-semibold text-brand-secondary underline underline-offset-2 hover:text-brand-secondary_hover"
+                                >
+                                    R&D incentive flow
+                                </a>{" "}
+                                and is now available inside your{" "}
+                                <a
+                                    href="#ask-my-accountant"
+                                    onClick={(e) => { e.preventDefault(); onNavigate?.("new-ask"); }}
+                                    className="font-semibold text-brand-secondary underline underline-offset-2 hover:text-brand-secondary_hover"
+                                >
+                                    Ask My Accountant
+                                </a>{" "}
+                                chat agent.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setRdLabelInfo(null)}
+                            className="shrink-0 text-fg-quaternary transition duration-100 ease-linear hover:text-fg-tertiary"
+                            aria-label="Dismiss"
+                        >
+                            <XClose className="size-4" />
+                        </button>
+                    </div>
+                )}
+
                 {needsReviewCount > 0 && (
                     <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-200/80 via-purple-100/70 to-blue-200/80 px-4 py-3.5">
                         <Flag04 className="size-4 shrink-0 text-orange-dark-500" />
@@ -350,7 +410,7 @@ function TransactionsPage() {
 
                 {/* Combined: Bank Tabs + Filters + Table */}
                 <div className="overflow-x-auto rounded-xl border border-secondary bg-primary">
-                    {/* Bank Tabs + Filters — single row */}
+                    {/* Bank Tabs + Filters, single row */}
                     {/* Bank Account Tabs */}
                     <div className="flex items-center gap-2 border-b border-secondary p-2">
                         {(() => {
@@ -1336,7 +1396,7 @@ function AccountsPayablePage() {
 
             {/* Stats row */}
             <div className="grid grid-cols-4 gap-4">
-                {/* Total Outstanding — hero card */}
+                {/* Total Outstanding, hero card */}
                 <div className="rounded-xl border border-brand bg-gradient-to-br from-brand-primary_alt to-primary px-6 py-5 shadow-md ring-1 ring-brand/10">
                     <p className="text-xs font-medium text-brand-secondary">Total outstanding</p>
                     <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-primary">
@@ -1396,7 +1456,7 @@ function AccountsPayablePage() {
                         <Calendar className="size-4 text-fg-quaternary" />
                     </div>
                     <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-primary">
-                        {nextDueBill ? nextDueBill.dueDate.replace(/, \d{4}$/, "") : "—"}
+                        {nextDueBill ? nextDueBill.dueDate.replace(/, \d{4}$/, "") : ", "}
                     </p>
                     <p className="mt-1 text-xs text-tertiary">{nextDueBill ? nextDueBill.vendor : ""}</p>
                 </div>
@@ -1814,7 +1874,7 @@ function AccountsReceivablePage() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function BookkeepingScreen({ page = "transactions" }: BookkeepingScreenProps) {
+export function BookkeepingScreen({ page = "transactions", onNavigate }: BookkeepingScreenProps) {
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-secondary">
             {/* Header */}
@@ -1832,7 +1892,7 @@ export function BookkeepingScreen({ page = "transactions" }: BookkeepingScreenPr
 
             {/* Page content */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
-                {page === "transactions" && <TransactionsPage />}
+                {page === "transactions" && <TransactionsPage onNavigate={onNavigate} />}
                 {page === "reports" && <ReportsPage />}
                 {page === "ap" && <AccountsPayablePage />}
                 {page === "ar" && <AccountsReceivablePage />}

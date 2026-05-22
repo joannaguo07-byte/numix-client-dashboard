@@ -198,7 +198,7 @@ export function ConversationDetailPanel({
 
     return (
         <div className="flex min-w-0 flex-1 flex-col bg-secondary">
-            {/* Top bar — same as home */}
+            {/* Top bar, same as home */}
             <header className="flex h-16 shrink-0 items-center justify-end gap-4 border-b border-secondary bg-white px-6">
                 <div className="flex items-center gap-2 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-placeholder transition duration-100 ease-linear hover:border-primary focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
                     <SearchLg className="size-4 text-fg-quaternary" aria-hidden />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "@/providers/auth-provider";
 import { getSupabase } from "@/utils/supabase";
@@ -21,12 +21,13 @@ import { IntegrationsSetup } from "@/app/integrations/integrations-setup";
 import { TaxScreen } from "@/app/tax/tax-screen";
 import { CFOScreen } from "@/app/cfo/cfo-screen";
 import { BookkeepingScreen } from "@/app/bookkeeping/bookkeeping-screen";
-import { SettingsScreen } from "@/app/settings/settings-screen";
+import { SettingsScreen, type Section as SettingsSection } from "@/app/settings/settings-screen";
 import { NewAskPanel } from "@/app/new-ask/new-ask-screen";
 import { ConversationDetailPanel } from "@/app/conversation/conversation-panel";
 import {
     BarChart01,
     BarChartSquare02,
+    Calendar,
     Check,
     ChevronDown,
     ChevronLeft,
@@ -37,6 +38,7 @@ import {
     Eye,
     File01,
     FileCheck02,
+    Flag04,
     Hash01,
     HelpCircle,
     Home01,
@@ -58,6 +60,8 @@ import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
 import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
+import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
+import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,11 +76,21 @@ function getGreeting() {
 
 type TaskStatus = "waiting-you" | "waiting-numix" | "done";
 
+type TaskCategory = "Tax Filing" | "Tax Planning" | "Bookkeeping" | "Fractional CFO";
+
+const CATEGORY_BADGE_COLOR: Record<TaskCategory, "blue" | "purple" | "success" | "brand"> = {
+    "Tax Filing": "blue",
+    "Tax Planning": "purple",
+    "Bookkeeping": "success",
+    "Fractional CFO": "brand",
+};
+
 interface Task {
     id: string;
     title: string;
     taskNumber: string;
     status: TaskStatus;
+    category?: TaskCategory;
     description?: string;
     dueDate?: string;
     source: string;
@@ -84,7 +98,89 @@ interface Task {
     action: "upload" | "review" | "confirm";
     completedDate?: string;
     conversationId?: string;
+    // When set, clicking the task's action button (or the card itself in
+    // board view) navigates to the corresponding panel instead of doing
+    // the default action.
+    panelId?: MainPanel;
+    // Optional accent for tasks that need extra visual attention in the list
+    // (e.g. flagged-for-review entry points).
+    accent?: "flag";
+    // For tax-calendar payment tasks: the calculated amount due.
+    amount?: string;
+    // For deadline tasks: distinguishes "pay" vs "file" action language.
+    deadlineKind?: "payment" | "filing";
+    // When Numix can prove the obligation was already handled (matched
+    // from a linked bank, or processed by Numix directly), the task shows
+    // a one-tap confirm flow instead of the back-and-forth SMS thread.
+    autoDetected?: {
+        source: string;        // e.g. "Mercury, Checking ···4821" or "Numix"
+        payee: string;         // e.g. "U.S. Treasury (IRS Direct Pay)"
+        matchedAt: string;     // e.g. "Apr 14, 2026"
+        matchedAmount: string; // e.g. "$4,200.00"
+        confidence: number;    // 0..1
+    };
+    // Priority drives the Priority sort option. Defaults to medium when missing.
+    priority?: "high" | "medium" | "low";
 }
+
+type SortKey = "due-date" | "priority" | "source" | "channel" | "created";
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+    { key: "due-date", label: "Due date" },
+    { key: "priority", label: "Priority" },
+    { key: "source", label: "Source" },
+    { key: "channel", label: "Channel" },
+    { key: "created", label: "Created" },
+];
+const PRIORITY_ORDER: Record<NonNullable<Task["priority"]>, number> = { high: 0, medium: 1, low: 2 };
+
+// Module-level context so tasks (rendered through DroppableListGroup → Row
+// chains) can navigate without prop-drilling goToPanel through every layer.
+const PanelNavContext = createContext<((panel: MainPanel) => void) | null>(null);
+const usePanelNav = () => useContext(PanelNavContext);
+
+// Format a due date for display. Adds an explicit year suffix when the date
+// has been rolled into a different calendar year than today's, so the user
+// doesn't read "Due Feb 28" as "this year" when it actually means next year.
+function displayDueDate(dueDate?: string): string | undefined {
+    if (!dueDate) return undefined;
+    const cleaned = dueDate.replace(/^Due\s+/i, "").trim();
+    if (/^this week$/i.test(cleaned)) return dueDate;
+    if (/,\s*\d{4}$/.test(cleaned)) return dueDate;
+    const now = new Date();
+    const year = now.getFullYear();
+    const parsed = Date.parse(`${cleaned}, ${year}`);
+    if (isNaN(parsed)) return dueDate;
+    if (parsed < now.getTime()) return `Due ${cleaned}, ${year + 1}`;
+    return dueDate;
+}
+
+// Convert a human due-date string ("Due Feb 28", "Due this week") into a
+// comparable timestamp for sorting. Unparseable / missing dates sort last.
+// If a parsed date is already in the past, roll it forward to next year. These
+// are recurring deadlines (quarterly taxes, monthly reconciliation), so the
+// next occurrence is what's actually due.
+function dueDateSortKey(dueDate?: string): number {
+    if (!dueDate) return Number.POSITIVE_INFINITY;
+    const cleaned = dueDate.replace(/^Due\s+/i, "").trim();
+    if (/^this week$/i.test(cleaned)) {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return d.getTime();
+    }
+    const now = new Date();
+    const year = now.getFullYear();
+    const parsed = Date.parse(`${cleaned}, ${year}`);
+    if (isNaN(parsed)) return Number.POSITIVE_INFINITY;
+    if (parsed < now.getTime()) {
+        const nextYear = Date.parse(`${cleaned}, ${year + 1}`);
+        return isNaN(nextYear) ? parsed : nextYear;
+    }
+    return parsed;
+}
+
+// Lets any task in the tree open the detail slideout without prop-drilling.
+const TaskDetailContext = createContext<((taskId: string) => void) | null>(null);
+const useOpenTaskDetail = () => useContext(TaskDetailContext);
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -124,57 +220,79 @@ const recentConversations = [
 
 const INITIAL_TASKS: Task[] = [
     {
+        id: "flagged-transactions",
+        title: "3 transactions flagged for your review",
+        taskNumber: "NUM-1099",
+        status: "waiting-you",
+        category: "Bookkeeping",
+        description: "AI couldn't categorise 3 recent transactions confidently. Confirm or recategorise them in Bookkeeping → Transactions.",
+        dueDate: "Due this week",
+        source: "System Generated",
+        channel: "In-app",
+        action: "review",
+        panelId: "bk-transactions",
+        accent: "flag",
+        priority: "high",
+    },
+    {
         id: "1",
         title: "Upload December Bank Statement",
         taskNumber: "NUM-1042",
         status: "waiting-you",
+        category: "Tax Filing",
         description: "Please upload your December bank statement to verify end-of-year balances for your 2024 return.",
         dueDate: "Due Feb 28",
         source: "System Generated",
-        channel: "Workspace",
+        channel: "Email",
         action: "upload",
         conversationId: "return-2024",
+        priority: "high",
     },
     {
         id: "2",
         title: "Review Draft Tax Summary",
         taskNumber: "NUM-1045",
         status: "waiting-you",
+        category: "Tax Filing",
         description: "Your CPA has prepared a draft tax summary. Please review and flag any discrepancies before we file.",
         dueDate: "Due Mar 10",
         source: "Requested by CPA",
         channel: "Slack",
         action: "review",
         conversationId: "return-2024",
+        priority: "medium",
     },
     {
         id: "3",
-        title: "Confirm Business Address",
-        taskNumber: "NUM-1047",
+        title: "Preparing 2024 1120-S Federal Return",
+        taskNumber: "NUM-1051",
         status: "waiting-numix",
-        description: "We need to verify your current registered business address for the R&D credit filings.",
-        dueDate: "Due Mar 5",
-        source: "System Generated",
-        channel: "Workspace",
-        action: "confirm",
-        conversationId: "rd-payroll",
+        category: "Tax Filing",
+        description: "Numix is drafting your S-Corp federal income tax return for tax year 2024. We'll share a draft for your review before filing.",
+        dueDate: "Due Mar 15",
+        source: "Numix CPA Team",
+        channel: "Slack",
+        action: "review",
+        conversationId: "return-2024",
     },
     {
         id: "4",
-        title: "R&D Credit Documentation",
-        taskNumber: "NUM-1048",
+        title: "Reconciling January Bank Activity",
+        taskNumber: "NUM-1052",
         status: "waiting-numix",
-        description: "Upload supporting documentation for the R&D payroll tax credit claim, including employee time logs.",
-        source: "Requested by CPA",
+        category: "Bookkeeping",
+        description: "Numix is matching January transactions from Mercury against your QuickBooks ledger to close the books for the month.",
+        dueDate: "Due Feb 5",
+        source: "Numix CPA Team",
         channel: "Slack",
-        action: "upload",
-        conversationId: "rd-payroll",
+        action: "review",
     },
     {
         id: "5",
         title: "Monthly Payroll Review - January",
         taskNumber: "NUM-1035",
         status: "done",
+        category: "Bookkeeping",
         source: "System Generated",
         channel: "Email",
         action: "review",
@@ -185,6 +303,7 @@ const INITIAL_TASKS: Task[] = [
         title: "Submit Contractor 1099 Forms",
         taskNumber: "NUM-1038",
         status: "done",
+        category: "Tax Filing",
         source: "Requested by CPA",
         channel: "SMS",
         action: "upload",
@@ -195,47 +314,59 @@ const INITIAL_TASKS: Task[] = [
         title: "Q3 Estimated Tax Payment",
         taskNumber: "DEADLINE",
         status: "waiting-you",
-        description: "Q3 estimated tax payment due Sep 15, 2024.",
+        category: "Tax Planning",
+        description: "Confirm you paid your Q3 estimated tax. We sent the payment link by SMS. If you've already paid, mark this done.",
         dueDate: "Due Sep 15",
         source: "Tax Calendar",
-        channel: "Workspace",
+        channel: "SMS",
         action: "confirm",
+        priority: "medium",
+        amount: "$4,200",
+        deadlineKind: "payment",
     },
     {
         id: "dl-2",
         title: "Extended Individual Return Deadline",
         taskNumber: "DEADLINE",
         status: "waiting-you",
-        description: "Extended individual return deadline is Oct 15, 2024.",
+        category: "Tax Filing",
+        description: "Confirm you filed your extended individual return. If Numix filed for you, this will close automatically once the IRS acknowledges.",
         dueDate: "Due Oct 15",
         source: "Tax Calendar",
-        channel: "Workspace",
+        channel: "Email",
         action: "confirm",
+        priority: "low",
+        deadlineKind: "filing",
     },
     {
         id: "dl-3",
-        title: "Q4 Estimated Tax Payment",
+        title: "Q1 Estimated Tax Payment",
         taskNumber: "DEADLINE",
         status: "waiting-you",
-        description: "Q4 estimated tax payment due Jan 15, 2025.",
-        dueDate: "Due Jan 15",
+        category: "Tax Planning",
+        description: "Q1 estimated tax payment was due Apr 15. Numix matched the payment from your Mercury account. One-tap confirm to close out.",
+        dueDate: "Due Apr 15",
         source: "Tax Calendar",
-        channel: "Workspace",
+        channel: "Auto-detected",
         action: "confirm",
+        priority: "low",
+        amount: "$4,200",
+        deadlineKind: "payment",
+        autoDetected: {
+            source: "Mercury, Checking ···4821",
+            payee: "U.S. Treasury (IRS Direct Pay)",
+            matchedAt: "Apr 14, 2026",
+            matchedAmount: "$4,200.00",
+            confidence: 0.96,
+        },
     },
 ];
 
-// ─── Presentational components ────────────────────────────────────────────────
+// Map task.id → original creation order (index in INITIAL_TASKS).
+// Lower index = older. Used by the "Created" sort option.
+const CREATED_ORDER: Map<string, number> = new Map(INITIAL_TASKS.map((t, i) => [t.id, i]));
 
-function StatusBadge({ status }: { status: TaskStatus }) {
-    if (status === "waiting-you") {
-        return <BadgeWithDot color="brand" type="pill-color" size="sm">Waiting on You</BadgeWithDot>;
-    }
-    if (status === "waiting-numix") {
-        return <BadgeWithDot color="blue-light" type="pill-color" size="sm">Waiting on Numix</BadgeWithDot>;
-    }
-    return <Badge color="gray" type="pill-color" size="sm">Done</Badge>;
-}
+// ─── Presentational components ────────────────────────────────────────────────
 
 function SidebarStatusBadge({ status }: { status: TaskStatus }) {
     if (status === "waiting-you") {
@@ -254,9 +385,24 @@ function ChannelIcon({ channel }: { channel: string }) {
 }
 
 function TaskActionButton({ task }: { task: Task }) {
-    if (task.action === "upload") return <Button color="secondary" size="sm" iconLeading={Upload01}>Upload</Button>;
-    if (task.action === "review") return <Button color="secondary" size="sm" iconLeading={Eye}>Review</Button>;
-    return <Button color="secondary" size="sm" iconLeading={Check}>Confirm</Button>;
+    const nav = usePanelNav();
+    const openDetail = useOpenTaskDetail();
+    const onClick = task.panelId && nav ? () => nav(task.panelId!) : undefined;
+    if (task.action === "upload") return <Button color="secondary" size="sm" iconLeading={Upload01} onClick={onClick}>Upload</Button>;
+    if (task.action === "review") {
+        const icon = task.accent === "flag" ? Flag04 : Eye;
+        const label = task.accent === "flag" ? "Review flagged" : "Review";
+        return <Button color="secondary" size="sm" iconLeading={icon} onClick={onClick}>{label}</Button>;
+    }
+    if (task.deadlineKind) {
+        const label = task.autoDetected
+            ? "Confirm match"
+            : task.deadlineKind === "payment"
+            ? "Mark paid"
+            : "Mark filed";
+        return <Button color="secondary" size="sm" iconLeading={Check} onClick={openDetail ? () => openDetail(task.id) : undefined}>{label}</Button>;
+    }
+    return <Button color="secondary" size="sm" iconLeading={Check} onClick={onClick}>Confirm</Button>;
 }
 
 function DragHandle() {
@@ -284,30 +430,47 @@ function BoardIcon() {
 
 function TaskCard({ task, dragListeners }: { task: Task; dragListeners?: Record<string, unknown> }) {
     const isDone = task.status === "done";
+    const openDetail = useOpenTaskDetail();
     return (
-        <div className={cx("rounded-xl border border-secondary bg-primary p-4 shadow-xs", isDone && "opacity-75")}>
+        <div
+            role={openDetail ? "button" : undefined}
+            tabIndex={openDetail ? 0 : undefined}
+            onClick={openDetail ? () => openDetail(task.id) : undefined}
+            onKeyDown={openDetail ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(task.id); } } : undefined}
+            className={cx(
+                "rounded-xl border border-secondary bg-primary p-4 shadow-xs",
+                isDone && "opacity-75",
+                openDetail && "cursor-pointer transition duration-100 ease-linear hover:border-brand hover:bg-primary_hover",
+            )}
+        >
             <div className="flex items-start gap-2">
-                <div
-                    {...(dragListeners as object)}
-                    className="mt-0.5 shrink-0 cursor-grab touch-none active:cursor-grabbing"
-                >
-                    <DragHandle />
-                </div>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                         <p className={cx("text-sm font-semibold leading-snug text-primary", isDone && "text-tertiary line-through")}>{task.title}</p>
-                        {!isDone && <TaskActionButton task={task} />}
+                        {!isDone && <div onClick={(e) => e.stopPropagation()}><TaskActionButton task={task} /></div>}
                     </div>
+                    {task.category && (
+                        <div className="mt-2">
+                            <Badge color={CATEGORY_BADGE_COLOR[task.category]} type="pill-color" size="sm">
+                                {task.category}
+                            </Badge>
+                        </div>
+                    )}
                     <div className="mt-2 flex items-center gap-1">
                         <Hash01 className="size-3 text-fg-quaternary" />
                         <span className={cx("text-xs text-tertiary", isDone && "line-through")}>{task.taskNumber}</span>
                         <Link01 className="size-3 text-fg-quaternary" />
                     </div>
-                    <div className="mt-2"><StatusBadge status={task.status} /></div>
                     {task.dueDate && (
                         <div className="mt-2 flex items-center gap-1.5">
                             <Clock className="size-3.5 text-fg-quaternary" />
-                            <span className="text-xs text-tertiary">{task.dueDate}</span>
+                            <span className="text-xs text-tertiary">{displayDueDate(task.dueDate)}</span>
+                            {task.amount && (
+                                <>
+                                    <span className="text-xs text-quaternary">·</span>
+                                    <span className="text-xs font-medium tabular-nums text-primary">{task.amount}</span>
+                                </>
+                            )}
                         </div>
                     )}
                     {task.completedDate && (
@@ -332,17 +495,31 @@ function TaskCard({ task, dragListeners }: { task: Task; dragListeners?: Record<
 
 function ListTaskRow({ task, dragListeners }: { task: Task; dragListeners?: Record<string, unknown> }) {
     const isDone = task.status === "done";
+    const openDetail = useOpenTaskDetail();
+    // Flag-accented tasks (e.g., flagged transactions) jump straight to their
+    // target panel via the action button (no detail slideout, since the work
+    // happens on the destination page itself).
+    const canOpenDetail = openDetail && task.accent !== "flag";
     return (
-        <div className={cx("flex items-center gap-3 rounded-lg border border-secondary bg-primary px-4 py-3 transition duration-100 ease-linear hover:bg-primary_hover", isDone && "opacity-60")}>
-            <div
-                {...(dragListeners as object)}
-                className="shrink-0 cursor-grab touch-none active:cursor-grabbing"
-            >
-                <DragHandle />
-            </div>
+        <div
+            role={canOpenDetail ? "button" : undefined}
+            tabIndex={canOpenDetail ? 0 : undefined}
+            onClick={canOpenDetail ? () => openDetail!(task.id) : undefined}
+            onKeyDown={canOpenDetail ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail!(task.id); } } : undefined}
+            className={cx(
+                "flex items-center gap-3 rounded-lg border border-secondary bg-primary px-4 py-3 transition duration-100 ease-linear hover:bg-primary_hover",
+                isDone && "opacity-60",
+                canOpenDetail && "cursor-pointer hover:border-brand",
+            )}
+        >
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                     <p className={cx("truncate text-sm font-medium text-primary", isDone && "text-tertiary line-through")}>{task.title}</p>
+                    {task.category && (
+                        <Badge color={CATEGORY_BADGE_COLOR[task.category]} type="pill-color" size="sm">
+                            {task.category}
+                        </Badge>
+                    )}
                     <div className="flex shrink-0 items-center gap-0.5">
                         <Hash01 className="size-3 text-fg-quaternary" />
                         <span className="text-xs text-quaternary">{task.taskNumber}</span>
@@ -361,11 +538,13 @@ function ListTaskRow({ task, dragListeners }: { task: Task; dragListeners?: Reco
                 </div>
             </div>
             <div className="flex shrink-0 items-center gap-3">
-                <StatusBadge status={task.status} />
+                {task.amount && !isDone && (
+                    <span className="text-xs font-medium tabular-nums text-primary">{task.amount}</span>
+                )}
                 {task.dueDate && !isDone && (
                     <div className="flex items-center gap-1">
                         <Clock className="size-3.5 text-fg-quaternary" />
-                        <span className="text-xs text-tertiary">{task.dueDate}</span>
+                        <span className="text-xs text-tertiary">{displayDueDate(task.dueDate)}</span>
                     </div>
                 )}
                 {task.completedDate && (
@@ -374,7 +553,7 @@ function ListTaskRow({ task, dragListeners }: { task: Task; dragListeners?: Reco
                         <span className="text-xs text-tertiary">{task.completedDate}</span>
                     </div>
                 )}
-                {!isDone && <TaskActionButton task={task} />}
+                {!isDone && <div onClick={(e) => e.stopPropagation()}><TaskActionButton task={task} /></div>}
             </div>
         </div>
     );
@@ -501,8 +680,42 @@ const columnColors = {
 
 type ColumnColor = keyof typeof columnColors;
 
-function DroppableBoardColumn({ status, title, count, tasks, color }: {
-    status: TaskStatus; title: string; count: number; tasks: Task[]; color?: ColumnColor;
+function CategoryTabs({ visibleCategories, categoryFilter, onChange, counts }: {
+    visibleCategories: Array<TaskCategory | "All">;
+    categoryFilter: TaskCategory | "All";
+    onChange: (c: TaskCategory | "All") => void;
+    counts: Record<string, number>;
+}) {
+    return (
+        <div className="flex items-center gap-1 rounded-md border border-secondary bg-primary p-0.5">
+            {visibleCategories.map((cat) => {
+                const isActive = categoryFilter === cat;
+                return (
+                    <button
+                        key={cat}
+                        type="button"
+                        onClick={() => onChange(cat)}
+                        className={cx(
+                            "flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition duration-100 ease-linear",
+                            isActive ? "bg-secondary text-primary shadow-xs" : "text-tertiary hover:text-primary",
+                        )}
+                    >
+                        {cat}
+                        <span className={cx(
+                            "rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                            isActive ? "bg-primary text-primary" : "bg-secondary text-tertiary",
+                        )}>
+                            {counts[cat] ?? 0}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+function DroppableBoardColumn({ status, title, count, tasks, color, headerRight }: {
+    status: TaskStatus; title: string; count: number; tasks: Task[]; color?: ColumnColor; headerRight?: ReactNode;
 }) {
     const { isOver, setNodeRef } = useDroppable({ id: status });
     const c = color ? columnColors[color] : null;
@@ -518,6 +731,7 @@ function DroppableBoardColumn({ status, title, count, tasks, color }: {
             <div className={cx("flex items-center gap-2 rounded-lg px-3 py-2", c ? c.headerBg : "bg-secondary")}>
                 <span className={cx("text-sm font-semibold", c ? c.title : "text-secondary")}>{title}</span>
                 <span className={cx("text-sm font-medium", c ? c.count : "text-tertiary")}>{count}</span>
+                {headerRight && <div className="ml-auto flex items-center">{headerRight}</div>}
             </div>
             <div className="flex min-h-14 flex-col gap-3">
                 {tasks.map((task) => <DraggableTaskCard key={task.id} task={task} />)}
@@ -536,8 +750,8 @@ function DraggableListRow({ task }: { task: Task }) {
     );
 }
 
-function DroppableListGroup({ status, title, count, tasks, color }: {
-    status: TaskStatus; title: string; count: number; tasks: Task[]; color?: ColumnColor;
+function DroppableListGroup({ status, title, count, tasks, color, headerRight }: {
+    status: TaskStatus; title: string; count: number; tasks: Task[]; color?: ColumnColor; headerRight?: ReactNode;
 }) {
     const { isOver, setNodeRef } = useDroppable({ id: status });
     const c = color ? columnColors[color] : null;
@@ -553,6 +767,7 @@ function DroppableListGroup({ status, title, count, tasks, color }: {
             <div className={cx("flex items-center gap-2 rounded-lg px-3 py-2", c ? c.headerBg : "bg-secondary")}>
                 <span className={cx("text-sm font-semibold", c ? c.title : "text-secondary")}>{title}</span>
                 <span className={cx("text-sm font-medium", c ? c.count : "text-tertiary")}>{count}</span>
+                {headerRight && <div className="ml-auto flex items-center">{headerRight}</div>}
             </div>
             <div className="min-h-10 space-y-1">
                 {tasks.map((task) => <DraggableListRow key={task.id} task={task} />)}
@@ -747,7 +962,7 @@ function StatusOverviewPage({ goToPanel }: { goToPanel: (panel: MainPanel) => vo
                             </div>
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-primary">2024 Returns</p>
-                                <p className="text-xs text-tertiary">In review — due Mar 15</p>
+                                <p className="text-xs text-tertiary">In review &middot; due Mar 15</p>
                             </div>
                         </div>
 
@@ -899,11 +1114,505 @@ function PageShell({ title, description, children }: { title: string; descriptio
     );
 }
 
+// ─── Connected summary (post-integration) ────────────────────────────────────
+
+function ConnectedSummary({ onNavigate }: { onNavigate: (panel: MainPanel, taxIntent?: { tab?: "expenses" | "credits"; credit?: string }) => void }) {
+    const metrics = [
+        { label: "Cash on hand", value: "$128,450", trend: "+2.4% this week", source: "Mercury", subLine: "$3,421 on Brex card", icon: CurrencyDollar, tone: "success" as const, onClick: () => onNavigate("bk-transactions"), hint: "View transactions" },
+        { label: "Open invoices", value: "$18,300", trend: "5 invoices · 2 overdue", source: "QuickBooks", icon: ReceiptCheck, tone: "warning" as const, onClick: () => onNavigate("bk-ar"), hint: "View receivables" },
+        { label: "R&D credit eligible", value: "$448,183.82", trend: "Tax year 2024", source: "Tax Planning", icon: Stars01, tone: "brand" as const, onClick: () => onNavigate("tax-planning", { tab: "credits", credit: "rd" }), hint: "Start claim" },
+    ];
+
+    const toneStyles = {
+        success: { value: "text-success-primary", iconBg: "bg-success-secondary", iconFg: "text-fg-success-primary", trend: "text-success-primary" },
+        warning: { value: "text-warning-primary", iconBg: "bg-warning-secondary", iconFg: "text-fg-warning-primary", trend: "text-warning-primary" },
+        brand: { value: "text-brand-secondary", iconBg: "bg-brand-primary_alt", iconFg: "text-fg-brand-primary", trend: "text-tertiary" },
+    };
+
+    return (
+        <div className="mb-8 overflow-hidden rounded-xl border border-secondary bg-primary">
+            {/* Brand banner header. Matches CFO / Tax / Bookkeeping. */}
+            <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
+                <div className="flex items-center gap-3">
+                    <div>
+                        <h3 className="text-sm font-semibold text-primary">Financial overview</h3>
+                        <p className="text-xs text-tertiary">Mercury &middot; Brex &middot; QuickBooks</p>
+                    </div>
+                    <BadgeWithDot color="success" size="sm" type="pill-color">Live</BadgeWithDot>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-tertiary">
+                    <Clock className="size-3.5" />
+                    Synced 2 min ago
+                </div>
+            </div>
+
+            {/* Metrics grid. Each tile links to its source page. */}
+            <div className="grid grid-cols-1 divide-y divide-secondary sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                {metrics.map((m) => {
+                    const t = toneStyles[m.tone];
+                    return (
+                        <div key={m.label} className="flex items-center justify-between gap-4 px-6 py-5">
+                            <div className="min-w-0">
+                                <p className="text-xs text-tertiary">{m.label}</p>
+                                <p className={cx("mt-1 text-2xl font-semibold tabular-nums tracking-tight", t.value)}>{m.value}</p>
+                                <p className={cx("mt-1 text-xs", t.trend)}>{m.trend}</p>
+                                {m.subLine && (
+                                    <p className="mt-0.5 text-xs text-tertiary">{m.subLine}</p>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={m.onClick}
+                                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-secondary hover:underline"
+                                >
+                                    {m.hint}
+                                    <ChevronRight className="size-3.5" />
+                                </button>
+                            </div>
+                            <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-full", t.iconBg)}>
+                                <m.icon className={cx("size-5", t.iconFg)} aria-hidden />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ─── Task detail slideout ────────────────────────────────────────────────────
+
+function TaskDetailSlideout({
+    task,
+    isOpen,
+    onClose,
+    goToPanel,
+    goToConversation,
+    onMarkDone,
+}: {
+    task: Task | null;
+    isOpen: boolean;
+    onClose: () => void;
+    goToPanel: (panel: MainPanel) => void;
+    goToConversation: (id: string, title: string) => void;
+    onMarkDone: (id: string, completedLabel: string) => void;
+}) {
+    const statusMeta = task
+        ? task.status === "waiting-you"
+            ? { label: "Waiting on You", color: "brand" as const }
+            : task.status === "waiting-numix"
+                ? { label: "Waiting on Numix", color: "blue-light" as const }
+                : { label: "Done", color: "gray" as const }
+        : null;
+
+    const actionMeta = task
+        ? task.deadlineKind
+            ? { icon: Calendar, headerLabel: task.deadlineKind === "payment" ? "Payment confirmation" : "Filing confirmation", featuredColor: "warning" as const }
+            : task.action === "upload"
+                ? { icon: Upload01, headerLabel: "Upload required", featuredColor: "brand" as const }
+                : task.action === "review"
+                    ? { icon: task.accent === "flag" ? Flag04 : Eye, headerLabel: task.accent === "flag" ? "Flagged for review" : "Review required", featuredColor: task.accent === "flag" ? ("warning" as const) : ("brand" as const) }
+                    : { icon: Check, headerLabel: "Confirmation needed", featuredColor: "brand" as const }
+        : null;
+
+    const linkedConversation = task?.conversationId
+        ? recentConversations.find((c) => c.id === task.conversationId)
+        : null;
+
+    return (
+        <SlideoutMenu isDismissable isOpen={isOpen} onOpenChange={(open) => { if (!open) onClose(); }} modalClassName="w-[640px] max-w-none">
+            {({ close }) => {
+                if (!task || !statusMeta || !actionMeta) return null;
+                return (
+                    <>
+                        <SlideoutMenu.Header onClose={close}>
+                            <div className="flex items-start gap-3 pr-8">
+                                <FeaturedIcon icon={actionMeta.icon} color={actionMeta.featuredColor} theme="light" size="md" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium uppercase tracking-wider text-tertiary">{actionMeta.headerLabel}</p>
+                                    <h2 className="mt-0.5 text-lg font-semibold leading-snug text-primary">{task.title}</h2>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <Badge color={statusMeta.color} type="pill-color" size="sm">{statusMeta.label}</Badge>
+                                        <div className="flex items-center gap-1 text-xs text-tertiary">
+                                            <Hash01 className="size-3 text-fg-quaternary" />
+                                            {task.taskNumber}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </SlideoutMenu.Header>
+
+                        <SlideoutMenu.Content>
+                            <div className="space-y-5">
+                                {/* Description */}
+                                {task.description && (
+                                    <div>
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Description</h3>
+                                        <p className="mt-2 text-sm leading-relaxed text-secondary">{task.description}</p>
+                                    </div>
+                                )}
+
+                                {/* Meta grid */}
+                                <div className="grid grid-cols-2 gap-3 rounded-xl border border-secondary bg-secondary/50 p-4">
+                                    {task.dueDate && (
+                                        <div>
+                                            <p className="text-xs text-tertiary">Due date</p>
+                                            <div className="mt-1 flex items-center gap-1.5">
+                                                <Clock className="size-3.5 text-fg-quaternary" />
+                                                <span className="text-sm font-medium text-primary">{displayDueDate(task.dueDate)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {task.completedDate && (
+                                        <div>
+                                            <p className="text-xs text-tertiary">Completed</p>
+                                            <div className="mt-1 flex items-center gap-1.5">
+                                                <Check className="size-3.5 text-fg-success-secondary" />
+                                                <span className="text-sm font-medium text-primary">{task.completedDate}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="text-xs text-tertiary">Source</p>
+                                        <div className="mt-1 flex items-center gap-1.5">
+                                            {task.source === "System Generated" ? <Settings01 className="size-3.5 text-fg-quaternary" /> : <User01 className="size-3.5 text-fg-quaternary" />}
+                                            <span className="text-sm font-medium text-primary">{task.source}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-tertiary">Channel</p>
+                                        <div className="mt-1 flex items-center gap-1.5">
+                                            <ChannelIcon channel={task.channel} />
+                                            <span className="text-sm font-medium text-primary">{task.channel}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Action-specific body */}
+                                {task.action === "upload" && (
+                                    <div>
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Upload area</h3>
+                                        <label className="mt-2 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-secondary bg-secondary/40 px-4 py-8 transition hover:border-brand hover:bg-brand-primary_alt/30">
+                                            <div className="flex size-10 items-center justify-center rounded-full bg-brand-primary_alt">
+                                                <Upload01 className="size-5 text-fg-brand-primary" />
+                                            </div>
+                                            <p className="text-sm font-medium text-primary">Drag & drop or click to upload</p>
+                                            <p className="text-xs text-tertiary">PDF, JPG, PNG &middot; up to 10MB</p>
+                                            <input type="file" className="hidden" />
+                                        </label>
+                                    </div>
+                                )}
+
+                                {task.action === "review" && task.accent === "flag" && (
+                                    <div className="rounded-xl border border-warning bg-warning-secondary/40 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <Flag04 className="mt-0.5 size-5 shrink-0 text-fg-warning-primary" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-primary">Flagged transactions need your call</p>
+                                                <p className="mt-1 text-xs text-tertiary">Open the Transactions page to confirm or recategorise each one. Numix will learn from your choices.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tax-calendar confirmation: show the amount and the original
+                                    reminder message. The user just needs to confirm "did you
+                                    handle it?". The SMS/email already contains the payment
+                                    or filing link. */}
+                                {task.deadlineKind && (
+                                    <>
+                                        {task.amount && !task.autoDetected && (
+                                            <div className="rounded-xl border border-warning-600 bg-warning-secondary/40 p-5">
+                                                <p className="text-xs font-medium uppercase tracking-wider text-warning-primary">{task.deadlineKind === "payment" ? "Amount owed" : "Filing fee"}</p>
+                                                <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-primary">{task.amount}</p>
+                                                <div className="mt-3 flex items-center gap-1.5">
+                                                    <Calendar className="size-4 text-fg-warning-primary" />
+                                                    <span className="text-sm font-medium text-primary">{displayDueDate(task.dueDate)?.replace(/^Due /, "")}, 2024</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {task.autoDetected ? (
+                                            /* Auto-detected: show the matched-transaction card instead of */
+                                            /* the SMS/email thread. The user just confirms Numix got it right. */
+                                            <div>
+                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">
+                                                    Matched payment
+                                                </h3>
+                                                <div className="mt-2 rounded-xl border border-success-600 bg-success-secondary/40 p-4">
+                                                    {/* Match facts at the top, condensed to 3 rows. */}
+                                                    <div className="overflow-hidden rounded-lg border border-secondary bg-primary text-sm">
+                                                        <div className="flex items-center justify-between border-b border-secondary px-3 py-2.5">
+                                                            <span className="text-xs text-tertiary">Payee</span>
+                                                            <span className="font-medium text-primary">{task.autoDetected.payee}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between border-b border-secondary px-3 py-2.5">
+                                                            <span className="text-xs text-tertiary">Amount</span>
+                                                            <span className="text-primary">
+                                                                <span className="font-semibold tabular-nums">{task.autoDetected.matchedAmount}</span>
+                                                                <span className="ml-2 text-tertiary">{task.autoDetected.matchedAt}</span>
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between px-3 py-2.5">
+                                                            <span className="text-xs text-tertiary">Account</span>
+                                                            <span className="font-medium text-primary">{task.autoDetected.source}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Summary + confidence sit below the table. */}
+                                                    <div className="mt-3 flex items-start gap-3">
+                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-success-primary ring-1 ring-success-600">
+                                                            <Check className="size-4 text-fg-success-primary" aria-hidden />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-semibold text-primary">
+                                                                Auto-paid via {task.autoDetected.source.split(",")[0]}
+                                                            </p>
+                                                            <p className="mt-0.5 text-xs text-tertiary">
+                                                                Numix matched this payment from your linked account. Confirm to close out.
+                                                            </p>
+                                                        </div>
+                                                        <BadgeWithDot color="success" type="pill-color" size="sm">
+                                                            {Math.round(task.autoDetected.confidence * 100)}% match
+                                                        </BadgeWithDot>
+                                                    </div>
+
+                                                    <p className="mt-3 text-xs text-tertiary">
+                                                        Not this payment?{" "}
+                                                        <a
+                                                            href="#"
+                                                            onClick={(e) => e.preventDefault()}
+                                                            className="font-medium text-brand-secondary underline underline-offset-2 transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                                                        >
+                                                            Search other transactions
+                                                        </a>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                        <div>
+                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">
+                                                {task.channel === "SMS" ? "Text message thread" : "Email thread"}
+                                            </h3>
+
+                                            {task.channel === "SMS" ? (
+                                                <>
+                                                    {/* SMS: chat-bubble layout */}
+                                                    <div className="mt-2 flex items-start gap-2">
+                                                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-primary_alt">
+                                                            <ChannelIcon channel={task.channel} />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-secondary bg-secondary/60 px-4 py-3">
+                                                            <p className="text-sm leading-relaxed text-primary">
+                                                                Heads up, your {task.title.toLowerCase()}
+                                                                {task.amount && <> of <span className="font-semibold">{task.amount}</span></>}
+                                                                {" "}is due {displayDueDate(task.dueDate)?.replace(/^Due /, "")}.
+                                                                {" "}Tap the{" "}
+                                                                <a
+                                                                    href="#"
+                                                                    onClick={(e) => e.preventDefault()}
+                                                                    className="font-medium text-brand-secondary underline underline-offset-2 transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                                                                >
+                                                                    link
+                                                                </a>
+                                                                {" "}{task.deadlineKind === "payment" ? "to pay through Numix, or reply DONE if you already paid." : "to file through Numix, or reply DONE if you already filed."}
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-quaternary">Numix &middot; +1 (415) 555-NUMIX &middot; 2 days ago</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-3 flex items-start justify-end gap-2">
+                                                        <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tr-sm bg-brand-solid px-4 py-3 text-white">
+                                                            <p className="text-sm leading-relaxed">
+                                                                DONE. {task.deadlineKind === "payment" ? "Paid via my bank yesterday." : "Filed yesterday."}
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-white/70">You &middot; 1 day ago</p>
+                                                        </div>
+                                                        <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-secondary">
+                                                            <img
+                                                                src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face"
+                                                                alt="You"
+                                                                className="size-full object-cover"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {/* Email: card layout with From / To / Subject headers */}
+                                                    <div className="mt-2 overflow-hidden rounded-xl border border-secondary bg-primary">
+                                                        <div className="flex items-center justify-between gap-3 border-b border-secondary bg-secondary/40 px-4 py-3">
+                                                            <div className="flex min-w-0 items-center gap-2.5">
+                                                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-primary_alt">
+                                                                    <Mail01 className="size-4 text-fg-brand-primary" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-medium text-primary">Numix Tax Team</p>
+                                                                    <p className="truncate text-xs text-tertiary">tax@numix.ai</p>
+                                                                </div>
+                                                            </div>
+                                                            <p className="shrink-0 text-xs text-tertiary">2 days ago</p>
+                                                        </div>
+                                                        <div className="px-4 py-3">
+                                                            <p className="text-xs text-tertiary">
+                                                                To: <span className="text-secondary">olivia@acme.com</span>
+                                                            </p>
+                                                            <p className="mt-1 text-sm font-semibold text-primary">
+                                                                {task.deadlineKind === "payment" ? `Payment reminder: ${task.title}` : `Filing reminder: ${task.title}`}
+                                                            </p>
+                                                        </div>
+                                                        <div className="border-t border-secondary px-4 py-4">
+                                                            <p className="text-sm leading-relaxed text-secondary">Hi Olivia,</p>
+                                                            <p className="mt-3 text-sm leading-relaxed text-secondary">
+                                                                {task.deadlineKind === "payment" ? (
+                                                                    <>
+                                                                        This is a reminder that your <span className="font-medium text-primary">{task.title}</span>
+                                                                        {task.amount && <> of <span className="font-semibold text-primary">{task.amount}</span></>}
+                                                                        {" "}is due on <span className="font-medium text-primary">{displayDueDate(task.dueDate)?.replace(/^Due /, "")}, 2024</span>. Quarterly estimated payments help you avoid IRS underpayment penalties when you file your annual return.
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        This is a reminder that your <span className="font-medium text-primary">extended individual return (Form 1040)</span> must be filed by <span className="font-medium text-primary">{displayDueDate(task.dueDate)?.replace(/^Due /, "")}, 2024</span>. Missing the extension deadline can result in IRS late-filing penalties of up to 5% per month.
+                                                                    </>
+                                                                )}
+                                                            </p>
+                                                            <p className="mt-3 text-sm leading-relaxed text-secondary">
+                                                                {task.deadlineKind === "payment"
+                                                                    ? "If you'd like Numix to schedule this payment from your linked Mercury account, click the button below. If you've already paid the IRS directly (via EFTPS, Direct Pay, or your bank), reply DONE and we'll mark it complete in your tax planner."
+                                                                    : "If you'd like Numix to prepare and file your return, click the button below to start the review process. If you've already filed elsewhere, or your CPA filed on your behalf, reply DONE and we'll close this out."}
+                                                            </p>
+                                                            <p className="mt-3 text-sm leading-relaxed text-secondary">
+                                                                As always, let us know if anything has changed about your tax situation this year. We want to make sure the numbers we have on file are still accurate before {task.deadlineKind === "payment" ? "we initiate any payment" : "we file"}.
+                                                            </p>
+                                                            <a
+                                                                href="#"
+                                                                onClick={(e) => e.preventDefault()}
+                                                                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:bg-brand-solid_hover"
+                                                            >
+                                                                {task.deadlineKind === "payment" ? "Pay through Numix" : "File through Numix"}
+                                                                <ChevronRight className="size-3.5" />
+                                                            </a>
+                                                            <div className="mt-6 space-y-1 border-t border-secondary pt-4 text-xs text-tertiary">
+                                                                <p className="font-medium text-secondary">The Numix Tax Team</p>
+                                                                <p>tax@numix.ai &middot; numix.ai</p>
+                                                                <p className="mt-2">
+                                                                    You&apos;re receiving this email because tax deadline notifications are enabled on your Numix account.{" "}
+                                                                    <a href="#" onClick={(e) => e.preventDefault()} className="text-brand-secondary hover:underline">
+                                                                        Manage preferences
+                                                                    </a>
+                                                                    {" "}or{" "}
+                                                                    <a href="#" onClick={(e) => e.preventDefault()} className="text-brand-secondary hover:underline">
+                                                                        unsubscribe
+                                                                    </a>.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* User's reply rendered as a forwarded/quoted email */}
+                                                    <div className="mt-3 overflow-hidden rounded-xl border border-secondary bg-primary">
+                                                        <div className="flex items-center justify-between gap-3 border-b border-secondary bg-brand-primary_alt/40 px-4 py-3">
+                                                            <div className="flex min-w-0 items-center gap-2.5">
+                                                                <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-secondary">
+                                                                    <img
+                                                                        src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face"
+                                                                        alt="You"
+                                                                        className="size-full object-cover"
+                                                                    />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-medium text-primary">Olivia Rhye</p>
+                                                                    <p className="truncate text-xs text-tertiary">olivia@acme.com</p>
+                                                                </div>
+                                                            </div>
+                                                            <p className="shrink-0 text-xs text-tertiary">1 day ago</p>
+                                                        </div>
+                                                        <div className="px-4 py-4">
+                                                            <p className="text-sm leading-relaxed text-secondary">
+                                                                Hi, just confirming I {task.deadlineKind === "payment" ? "paid this via my bank yesterday" : "filed this yesterday"}. All set on my end.
+                                                            </p>
+                                                            <p className="mt-3 text-sm text-tertiary">Olivia</p>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* Linked conversation */}
+                                {linkedConversation && (
+                                    <div>
+                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Linked conversation</h3>
+                                        <button
+                                            type="button"
+                                            onClick={() => { close(); goToConversation(linkedConversation.id, linkedConversation.title); }}
+                                            className="mt-2 flex w-full items-center gap-3 rounded-lg border border-secondary bg-primary p-3 text-left transition hover:border-brand hover:bg-brand-primary_alt/30"
+                                        >
+                                            <div className="flex size-8 items-center justify-center rounded-lg bg-brand-primary_alt">
+                                                <MessageSquare01 className="size-4 text-fg-brand-primary" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-medium text-primary">{linkedConversation.title}</p>
+                                                <p className="text-xs text-tertiary">{linkedConversation.time}</p>
+                                            </div>
+                                            <ChevronRight className="size-4 text-fg-quaternary" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </SlideoutMenu.Content>
+
+                        <SlideoutMenu.Footer>
+                            <div className="flex items-center justify-end gap-2">
+                                {(() => {
+                                    if (task.action === "upload") {
+                                        return (
+                                            <>
+                                                <Button color="tertiary" size="md" onClick={() => { close(); goToPanel("documents"); }}>Open Documents</Button>
+                                                <Button color="primary" size="md" iconLeading={Upload01}>Upload</Button>
+                                            </>
+                                        );
+                                    }
+                                    if (task.action === "review" && task.accent === "flag") {
+                                        return <Button color="primary" size="md" iconLeading={Flag04} onClick={() => { close(); goToPanel("bk-transactions"); }}>Review in Transactions</Button>;
+                                    }
+                                    if (task.deadlineKind) {
+                                        // Auto-detected payments: user is confirming Numix's match,
+                                        // not telling Numix something new. Different verb + escape hatch.
+                                        if (task.autoDetected) {
+                                            const note = `Confirmed match, ${task.autoDetected.source}`;
+                                            return (
+                                                <>
+                                                    <Button color="secondary" size="md" onClick={() => { onMarkDone(task.id, "Marked needs-manual-review"); close(); }}>Not this match</Button>
+                                                    <Button color="primary" size="md" iconLeading={Check} onClick={() => { onMarkDone(task.id, note); close(); }}>Confirm match</Button>
+                                                </>
+                                            );
+                                        }
+                                        const label = task.deadlineKind === "payment" ? "Mark paid" : "Mark filed";
+                                        const note = task.deadlineKind === "payment" ? "Marked paid today" : "Marked filed today";
+                                        return <Button color="primary" size="md" iconLeading={Check} onClick={() => { onMarkDone(task.id, note); close(); }}>{label}</Button>;
+                                    }
+                                    if (task.action === "review") {
+                                        return <Button color="primary" size="md" iconLeading={Eye} onClick={() => { close(); goToPanel("tax-filing"); }}>Open Tax Filing</Button>;
+                                    }
+                                    return <Button color="primary" size="md" iconLeading={Check} onClick={() => { onMarkDone(task.id, "Marked done today"); close(); }}>Mark as done</Button>;
+                                })()}
+                            </div>
+                        </SlideoutMenu.Footer>
+                    </>
+                );
+            }}
+        </SlideoutMenu>
+    );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
-export const NumixScreen = () => {
+export const NumixScreen = ({ connected = false }: { connected?: boolean } = {}) => {
     const { user, loading: authLoading, signOut } = useAuth();
     const [showLogin, setShowLogin] = useState(() => {
+        if (connected) return false;
         if (typeof window === "undefined") return false;
         const step = new URLSearchParams(window.location.search).get("step");
         if (step === "login") return true;
@@ -911,11 +1620,30 @@ export const NumixScreen = () => {
     });
     const [showIntegrations, setShowIntegrations] = useState(() => {
         if (typeof window === "undefined") return false;
-        const step = new URLSearchParams(window.location.search).get("step");
-        return step === "access";
+        const params = new URLSearchParams(window.location.search);
+        const step = params.get("step");
+        if (step === "home" || step === "login") return false;
+        // Demo behaviour: every refresh of any route lands on the integration
+        // setup screen. The `connected` URL prop no longer suppresses this so
+        // refreshing /connected also resets the demo.
+        // Use ?step=home to skip past it for testing other flows.
+        return true;
     });
+    // After the user clicks "Continue" on the integrations page, this becomes
+    // true to enable the post-integration home (ConnectedSummary, banners) on
+    // the same render without needing a URL change. Refreshing resets it.
+    const [completedThisSession, setCompletedThisSession] = useState(false);
+    const isConnected = connected || completedThisSession;
 
-    // Sync showLogin with auth state — only hide login when user logs in, never force it back
+    // Demo behaviour: clear any prior completion flag on mount so refreshing
+    // resets the flow back to the integrations page.
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            localStorage.removeItem("numix:integrations-complete");
+        }
+    }, []);
+
+    // Sync showLogin with auth state. Only hide login when user logs in, never force it back.
     useEffect(() => {
         if (authLoading) return;
         if (user) {
@@ -924,6 +1652,7 @@ export const NumixScreen = () => {
     }, [user, authLoading]);
     const [showSettings, setShowSettings] = useState(false);
     const [setupIncomplete, setSetupIncomplete] = useState(false);
+    const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection | undefined>(undefined);
     const [expandedNav, setExpandedNav] = useState<string | null>(null);
     const [receiptDragOver, setReceiptDragOver] = useState(false);
     const [uploadOverlay, setUploadOverlay] = useState(false);
@@ -931,23 +1660,114 @@ export const NumixScreen = () => {
     const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
     const [mainPanel, setMainPanel] = useState<MainPanel>("home");
     const [activeConversation, setActiveConversation] = useState<{ id: string; title: string } | null>(null);
-    const [boardView, setBoardView] = useState<"list" | "board">("list");
+    const [showAllWaitingYou, setShowAllWaitingYou] = useState(false);
+    const [sortKey, setSortKey] = useState<SortKey>("due-date");
+    const [sortMenuOpen, setSortMenuOpen] = useState(false);
+    const sortMenuRef = useRef<HTMLDivElement>(null);
+    // Channel filter. Empty Set means "all channels" (no filter applied).
+    const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
+    const [channelMenuOpen, setChannelMenuOpen] = useState(false);
+    const channelMenuRef = useRef<HTMLDivElement>(null);
+    const WAITING_YOU_PAGE_SIZE = 5;
+
+    // Close sort menu on outside click
+    useEffect(() => {
+        if (!sortMenuOpen) return;
+        const onClick = (e: MouseEvent) => {
+            if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+                setSortMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onClick);
+        return () => document.removeEventListener("mousedown", onClick);
+    }, [sortMenuOpen]);
+
+    // Close channel filter menu on outside click
+    useEffect(() => {
+        if (!channelMenuOpen) return;
+        const onClick = (e: MouseEvent) => {
+            if (channelMenuRef.current && !channelMenuRef.current.contains(e.target as Node)) {
+                setChannelMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onClick);
+        return () => document.removeEventListener("mousedown", onClick);
+    }, [channelMenuOpen]);
     const [statusExpanded, setStatusExpanded] = useState(true);
+    const [numixWorkExpanded, setNumixWorkExpanded] = useState(false);
+    const [categoryFilter, setCategoryFilter] = useState<TaskCategory | "All">("All");
+    const [taxIntent, setTaxIntent] = useState<{ tab?: "expenses" | "credits"; credit?: string } | null>(null);
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [askInitialPrompt, setAskInitialPrompt] = useState<string | undefined>(undefined);
     const [askBackPanel, setAskBackPanel] = useState<MainPanel>("home");
     const [conversations, setConversations] = useState(recentConversations);
+    const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
     const direction = useRef<1 | -1>(1);
 
     const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null;
+    const detailTask = tasks.find((t) => t.id === detailTaskId) ?? null;
+    const openTaskDetail = useCallback((id: string) => setDetailTaskId(id), []);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-    const waitingYouTasks = tasks.filter((t) => t.status === "waiting-you");
-    const waitingNumixTasks = tasks.filter((t) => t.status === "waiting-numix");
+    // Sort Waiting-on-You by the user's chosen key, then slice to a 5-row
+    // default. Show-more button reveals the rest.
+    const compareTasks = (a: Task, b: Task): number => {
+        switch (sortKey) {
+            case "priority": {
+                const pa = PRIORITY_ORDER[a.priority ?? "medium"];
+                const pb = PRIORITY_ORDER[b.priority ?? "medium"];
+                return pa - pb;
+            }
+            case "source":
+                return a.source.localeCompare(b.source);
+            case "channel":
+                return a.channel.localeCompare(b.channel);
+            case "created": {
+                // Newest first → highest original index first.
+                const oa = CREATED_ORDER.get(a.id) ?? -1;
+                const ob = CREATED_ORDER.get(b.id) ?? -1;
+                return ob - oa;
+            }
+            case "due-date":
+            default:
+                return dueDateSortKey(a.dueDate) - dueDateSortKey(b.dueDate);
+        }
+    };
+    const matchesCategory = (t: Task) => categoryFilter === "All" || t.category === categoryFilter;
+    const matchesChannel = (t: Task) => channelFilter.size === 0 || channelFilter.has(t.channel);
+    const waitingYouTasksAll = tasks
+        .filter((t) => t.status === "waiting-you" && matchesCategory(t) && matchesChannel(t))
+        .slice()
+        .sort(compareTasks);
+    const waitingYouHiddenCount = Math.max(0, waitingYouTasksAll.length - WAITING_YOU_PAGE_SIZE);
+    const waitingYouTasks = showAllWaitingYou
+        ? waitingYouTasksAll
+        : waitingYouTasksAll.slice(0, WAITING_YOU_PAGE_SIZE);
+    const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Due date";
+    // Unique channels across all Waiting-on-You tasks, used to populate the filter dropdown.
+    const availableChannels = Array.from(
+        new Set(tasks.filter((t) => t.status === "waiting-you").map((t) => t.channel))
+    ).sort();
+    const channelFilterLabel =
+        channelFilter.size === 0
+            ? "All"
+            : channelFilter.size === 1
+            ? Array.from(channelFilter)[0]
+            : `${channelFilter.size} selected`;
+    const waitingNumixTasks = tasks.filter((t) => t.status === "waiting-numix" && matchesCategory(t));
     const doneTasks = tasks.filter((t) => t.status === "done");
     const activeTasks = tasks.filter((t) => t.status !== "done");
+    const allWaitingYouTasks = tasks.filter((t) => t.status === "waiting-you");
+    const categoryCounts: Record<string, number> = { All: allWaitingYouTasks.length };
+    for (const t of allWaitingYouTasks) {
+        if (t.category) categoryCounts[t.category] = (categoryCounts[t.category] ?? 0) + 1;
+    }
+    const visibleCategories: Array<TaskCategory | "All"> = [
+        "All",
+        ...(Object.keys(CATEGORY_BADGE_COLOR) as TaskCategory[]).filter((c) => (categoryCounts[c] ?? 0) > 0),
+    ];
 
     // CMD+K to open search
     useEffect(() => {
@@ -1047,7 +1867,10 @@ export const NumixScreen = () => {
             >
                 <IntegrationsSetup
                     onComplete={(connectedCount, totalCount) => {
+                        // Demo: completion is in-memory only. Refresh resets
+                        // back to integrations on every route.
                         setShowIntegrations(false);
+                        setCompletedThisSession(true);
                         if (connectedCount < totalCount) setSetupIncomplete(true);
                     }}
                     onBack={() => { setShowIntegrations(false); setShowLogin(true); }}
@@ -1057,6 +1880,8 @@ export const NumixScreen = () => {
     }
 
     return (
+        <PanelNavContext.Provider value={goToPanel}>
+        <TaskDetailContext.Provider value={openTaskDetail}>
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1278,7 +2103,7 @@ export const NumixScreen = () => {
                     </motion.div>
                 ) : mainPanel === "tax-planning" ? (
                     <motion.div key="tax-planning" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
-                        <TaxScreen page="planning" />
+                        <TaxScreen page="planning" intent={taxIntent} clearIntent={() => setTaxIntent(null)} />
                     </motion.div>
                 ) : mainPanel === "cfo-forecast" ? (
                     <motion.div key="cfo-forecast" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
@@ -1310,7 +2135,13 @@ export const NumixScreen = () => {
                     </motion.div>
                 ) : mainPanel === "bk-transactions" ? (
                     <motion.div key="bk-transactions" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
-                        <BookkeepingScreen page="transactions" />
+                        <BookkeepingScreen
+                            page="transactions"
+                            onNavigate={(p, opts) => {
+                                if (opts?.taxIntent) setTaxIntent(opts.taxIntent);
+                                goToPanel(p as MainPanel);
+                            }}
+                        />
                     </motion.div>
                 ) : mainPanel === "bk-reports" ? (
                     <motion.div key="bk-reports" custom={direction.current} variants={slideVariants} initial="initial" animate="animate" exit="exit" transition={slideTransition} className="flex min-w-0 flex-1 overflow-hidden">
@@ -1338,43 +2169,149 @@ export const NumixScreen = () => {
                             <main className="flex-1 overflow-auto px-10 py-8">
                                 <div className="mb-8">
                                     <h1 className="text-display-sm font-semibold text-primary">{getGreeting()}, Olivia</h1>
-                                    <p className="mt-1 text-md text-tertiary">Here&apos;s what needs your attention.</p>
+                                    <p className="mt-1 text-md text-tertiary">Here&apos;s what to do next.</p>
                                 </div>
+
+                                {isConnected && setupIncomplete && (
+                                    <div className="mb-8 flex items-center gap-3 rounded-xl border border-secondary bg-brand-primary_alt/40 px-4 py-3">
+                                        <FeaturedIcon icon={Link01} color="brand" theme="light" size="md" />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-semibold text-primary">Add more integrations anytime</p>
+                                            <p className="mt-0.5 text-xs text-tertiary">
+                                                You can always connect additional banking, accounting, or expense tools whenever you&apos;re ready.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            color="secondary"
+                                            size="sm"
+                                            iconTrailing={ChevronRight}
+                                            onClick={() => { setSettingsInitialSection("integrations"); setShowSettings(true); }}
+                                        >
+                                            Add integrations
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {isConnected && (
+                                    <ConnectedSummary
+                                        onNavigate={(panel, intent) => {
+                                            if (intent) setTaxIntent(intent);
+                                            goToPanel(panel);
+                                        }}
+                                    />
+                                )}
 
                                 <div className="flex items-start gap-6">
                                     {/* Left: What Needs Your Attention */}
                                     <div className="min-w-0 flex-1">
                                         <div className="mb-4 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <h2 className="text-lg font-semibold text-primary">What Needs Your Attention</h2>
+                                                <h2 className="text-lg font-semibold text-primary">Your next steps</h2>
                                                 <Badge color="brand" type="pill-color" size="sm">{activeTasks.length} active</Badge>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <Button color="secondary" size="sm" iconLeading={Plus}>Create New Task</Button>
-                                                <div className="flex items-center gap-1 rounded-lg border border-secondary bg-primary p-1">
+                                                {/* All three controls share the same h-9, rounded-lg, */}
+                                                {/* border-secondary, no-shadow chrome for visual parity. */}
+
+                                                {/* Channel filter (multi-select) */}
+                                                <div ref={channelMenuRef} className="relative">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setBoardView("list")}
-                                                        className={cx(
-                                                            "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition duration-100 ease-linear",
-                                                            boardView === "list" ? "bg-brand-solid text-white" : "text-quaternary hover:text-tertiary",
-                                                        )}
+                                                        onClick={() => setChannelMenuOpen((v) => !v)}
+                                                        className="flex h-9 items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 text-sm font-medium text-primary transition duration-100 ease-linear hover:bg-primary_hover"
                                                     >
-                                                        <Rows01 className="size-4" aria-hidden />
-                                                        List
+                                                        <MessageSquare01 className="size-4 text-fg-quaternary" aria-hidden />
+                                                        <span className="text-tertiary">Channel:</span>
+                                                        <span>{channelFilterLabel}</span>
+                                                        <ChevronDown className={cx("size-4 text-fg-quaternary transition-transform duration-100 ease-linear", channelMenuOpen && "rotate-180")} aria-hidden />
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setBoardView("board")}
-                                                        className={cx(
-                                                            "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition duration-100 ease-linear",
-                                                            boardView === "board" ? "bg-brand-solid text-white" : "text-quaternary hover:text-tertiary",
-                                                        )}
-                                                    >
-                                                        <BoardIcon />
-                                                        Board
-                                                    </button>
+                                                    {channelMenuOpen && (
+                                                        <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-secondary bg-primary p-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setChannelFilter(new Set())}
+                                                                className={cx(
+                                                                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition duration-100 ease-linear hover:bg-primary_hover",
+                                                                    channelFilter.size === 0 ? "font-semibold text-primary" : "text-secondary",
+                                                                )}
+                                                            >
+                                                                All channels
+                                                                {channelFilter.size === 0 && <Check className="size-3.5 text-fg-brand-primary" aria-hidden />}
+                                                            </button>
+                                                            <div className="my-1 h-px bg-secondary" />
+                                                            {availableChannels.map((ch) => {
+                                                                const selected = channelFilter.has(ch);
+                                                                return (
+                                                                    <button
+                                                                        key={ch}
+                                                                        type="button"
+                                                                        onClick={() => setChannelFilter((prev) => {
+                                                                            const next = new Set(prev);
+                                                                            if (next.has(ch)) next.delete(ch); else next.add(ch);
+                                                                            return next;
+                                                                        })}
+                                                                        className={cx(
+                                                                            "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition duration-100 ease-linear hover:bg-primary_hover",
+                                                                            selected ? "font-semibold text-primary" : "text-secondary",
+                                                                        )}
+                                                                    >
+                                                                        <span className="flex items-center gap-2">
+                                                                            <span className={cx(
+                                                                                "flex size-4 items-center justify-center rounded border",
+                                                                                selected ? "border-brand bg-brand-solid" : "border-secondary bg-primary",
+                                                                            )}>
+                                                                                {selected && <Check className="size-3 text-white" aria-hidden />}
+                                                                            </span>
+                                                                            {ch}
+                                                                        </span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
                                                 </div>
+
+                                                {/* Sort dropdown */}
+                                                <div ref={sortMenuRef} className="relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSortMenuOpen((v) => !v)}
+                                                        className="flex h-9 items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 text-sm font-medium text-primary transition duration-100 ease-linear hover:bg-primary_hover"
+                                                    >
+                                                        <Clock className="size-4 text-fg-quaternary" aria-hidden />
+                                                        <span className="text-tertiary">Sort:</span>
+                                                        <span>{currentSortLabel}</span>
+                                                        <ChevronDown className={cx("size-4 text-fg-quaternary transition-transform duration-100 ease-linear", sortMenuOpen && "rotate-180")} aria-hidden />
+                                                    </button>
+                                                    {sortMenuOpen && (
+                                                        <div className="absolute right-0 top-full z-20 mt-1 min-w-[160px] rounded-lg border border-secondary bg-primary p-1">
+                                                            {SORT_OPTIONS.map((opt) => (
+                                                                <button
+                                                                    key={opt.key}
+                                                                    type="button"
+                                                                    onClick={() => { setSortKey(opt.key); setSortMenuOpen(false); }}
+                                                                    className={cx(
+                                                                        "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition duration-100 ease-linear hover:bg-primary_hover",
+                                                                        sortKey === opt.key ? "font-semibold text-primary" : "text-secondary",
+                                                                    )}
+                                                                >
+                                                                    {opt.label}
+                                                                    {sortKey === opt.key && <Check className="size-3.5 text-fg-brand-primary" aria-hidden />}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Create New Task: plain button so it stays shadow-free */}
+                                                <button
+                                                    type="button"
+                                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 text-sm font-medium text-primary transition duration-100 ease-linear hover:bg-primary_hover"
+                                                >
+                                                    <Plus className="size-4 text-fg-quaternary" aria-hidden />
+                                                    Create New Task
+                                                </button>
+
                                             </div>
                                         </div>
 
@@ -1384,28 +2321,104 @@ export const NumixScreen = () => {
                                             onDragStart={handleDragStart}
                                             onDragEnd={handleDragEnd}
                                         >
-                                            {boardView === "list" ? (
-                                                <div className="space-y-4 pb-4">
-                                                    <DroppableListGroup status="waiting-you" title="Waiting on You" count={waitingYouTasks.length} tasks={waitingYouTasks} color="brand" />
-                                                    <DroppableListGroup status="waiting-numix" title="Waiting on Numix" count={waitingNumixTasks.length} tasks={waitingNumixTasks} color="warning" />
-                                                </div>
-                                            ) : (
-                                                <div className="flex gap-4 pb-4">
-                                                    <DroppableBoardColumn status="waiting-you" title="Waiting on You" count={waitingYouTasks.length} tasks={waitingYouTasks} color="brand" />
-                                                    <DroppableBoardColumn status="waiting-numix" title="Waiting on Numix" count={waitingNumixTasks.length} tasks={waitingNumixTasks} color="warning" />
+                                            <div className="space-y-4 pb-4">
+                                                <DroppableListGroup
+                                                    status="waiting-you"
+                                                    title="Waiting on You"
+                                                    count={waitingYouTasksAll.length}
+                                                    tasks={waitingYouTasks}
+                                                    color="brand"
+                                                    headerRight={
+                                                        <CategoryTabs
+                                                            visibleCategories={visibleCategories}
+                                                            categoryFilter={categoryFilter}
+                                                            onChange={setCategoryFilter}
+                                                            counts={categoryCounts}
+                                                        />
+                                                    }
+                                                />
+                                            </div>
+
+                                            {/* Show more / less, styled as a list footer so it sits clearly */}
+                                            {/* at the bottom of the Waiting on You list (rather than floating */}
+                                            {/* loose under it where users miss it). */}
+                                            {(waitingYouHiddenCount > 0 || showAllWaitingYou) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAllWaitingYou((v) => !v)}
+                                                    className="group -mt-2 mb-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-secondary bg-primary/50 px-3 py-2.5 text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:border-brand hover:bg-brand-primary_alt hover:text-brand-secondary_hover"
+                                                >
+                                                    {showAllWaitingYou ? (
+                                                        <>
+                                                            Show less
+                                                            <ChevronDown className="size-4 rotate-180 transition-transform duration-100 ease-linear" aria-hidden />
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Show {waitingYouHiddenCount} more
+                                                            <ChevronDown className="size-4 transition-transform duration-100 ease-linear group-hover:translate-y-0.5" aria-hidden />
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {waitingNumixTasks.length > 0 && (
+                                                <div className="mt-2 rounded-xl border border-secondary bg-primary/60">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setNumixWorkExpanded((v) => !v)}
+                                                        className="flex w-full items-center gap-2 px-4 py-3 text-left transition duration-100 ease-linear hover:bg-primary_hover"
+                                                    >
+                                                        <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-fg-warning-primary" />
+                                                        <span className="flex-1 text-sm text-secondary">
+                                                            Numix is working on{" "}
+                                                            <span className="font-semibold text-primary">
+                                                                {waitingNumixTasks.length} item{waitingNumixTasks.length === 1 ? "" : "s"}
+                                                            </span>{" "}
+                                                            for you
+                                                        </span>
+                                                        <span className="shrink-0 rounded-full bg-warning-primary px-2 py-0.5 text-xs font-medium text-warning-primary">In progress</span>
+                                                        <ChevronDown
+                                                            className={cx(
+                                                                "size-4 text-fg-quaternary transition-transform duration-150",
+                                                                numixWorkExpanded && "rotate-180",
+                                                            )}
+                                                            aria-hidden
+                                                        />
+                                                    </button>
+                                                    <AnimatePresence initial={false}>
+                                                        {numixWorkExpanded && (
+                                                            <motion.div
+                                                                key="numix-work"
+                                                                initial={{ height: 0, opacity: 0 }}
+                                                                animate={{ height: "auto", opacity: 1 }}
+                                                                exit={{ height: 0, opacity: 0 }}
+                                                                transition={{ duration: 0.18, ease: "easeInOut" }}
+                                                                className="overflow-hidden"
+                                                            >
+                                                                <ul className="divide-y divide-secondary border-t border-secondary">
+                                                                    {waitingNumixTasks.map((t) => (
+                                                                        <li key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                                                                            <div className="min-w-0">
+                                                                                <p className="truncate text-sm text-primary">{t.title}</p>
+                                                                                <p className="truncate text-xs text-tertiary">{t.source}</p>
+                                                                            </div>
+                                                                            {t.dueDate && (
+                                                                                <span className="shrink-0 text-xs text-tertiary">{displayDueDate(t.dueDate)}</span>
+                                                                            )}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
                                                 </div>
                                             )}
                                             <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
                                                 {activeTask ? (
-                                                    boardView === "list" ? (
-                                                        <div className="rotate-1 shadow-xl opacity-95">
-                                                            <ListTaskRow task={activeTask} />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-72 rotate-1 shadow-xl opacity-95">
-                                                            <TaskCard task={activeTask} />
-                                                        </div>
-                                                    )
+                                                    <div className="rotate-1 shadow-xl opacity-95">
+                                                        <ListTaskRow task={activeTask} />
+                                                    </div>
                                                 ) : null}
                                             </DragOverlay>
                                         </DndContext>
@@ -1499,13 +2512,18 @@ export const NumixScreen = () => {
             </div>
 
             {/* ── Settings modal ──────────────────────────────────────────── */}
-            <ModalOverlay isOpen={showSettings} onOpenChange={setShowSettings} isDismissable>
+            <ModalOverlay
+                isOpen={showSettings}
+                onOpenChange={(open) => { setShowSettings(open); if (!open) setSettingsInitialSection(undefined); }}
+                isDismissable
+            >
                 <Modal className="max-w-[900px]">
                     <Dialog className="outline-hidden">
                         <SettingsScreen
-                            onBack={() => setShowSettings(false)}
+                            onBack={() => { setShowSettings(false); setSettingsInitialSection(undefined); }}
                             setupIncomplete={setupIncomplete}
                             onSetupComplete={() => setSetupIncomplete(false)}
+                            initialSection={settingsInitialSection}
                         />
                     </Dialog>
                 </Modal>
@@ -1559,12 +2577,26 @@ export const NumixScreen = () => {
                                         Cancel
                                     </Button>
                                 </div>
-                                <p className="text-xs text-quaternary">PDF, CSV, Excel, images — up to 25 MB each</p>
+                                <p className="text-xs text-quaternary">PDF, CSV, Excel, images (up to 25 MB each)</p>
                             </div>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
         </motion.div>
+
+        <TaskDetailSlideout
+            task={detailTask}
+            isOpen={detailTaskId !== null}
+            onClose={() => setDetailTaskId(null)}
+            goToPanel={goToPanel}
+            goToConversation={goToConversation}
+            onMarkDone={(id, completedLabel) => {
+                setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: "done", completedDate: completedLabel } : t));
+                setDetailTaskId(null);
+            }}
+        />
+        </TaskDetailContext.Provider>
+        </PanelNavContext.Provider>
     );
 };

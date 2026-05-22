@@ -243,7 +243,7 @@ export function OwnersStep() {
                         {[
                             { name: "Jordan Rivera", ssn: "***-**-4521", pct: "60%", complete: true },
                             { name: "Alex Chen", ssn: "***-**-7834", pct: "25%", complete: true },
-                            { name: "—", ssn: "—", pct: "15%", complete: false },
+                            { name: ", ", ssn: ", ", pct: "15%", complete: false },
                         ].map((owner, i) => (
                             <tr key={i} className="border-b border-secondary last:border-b-0">
                                 <td className="px-4 py-3 text-primary">{owner.name}</td>

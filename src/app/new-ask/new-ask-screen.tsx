@@ -88,11 +88,11 @@ function AgentBubble({ message }: { message: Message }) {
                         <p className="mt-4 text-sm leading-relaxed text-primary">A few things worth flagging:</p>
                         <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-primary">
                             <li>
-                                <span className="font-medium">May 15 will be your tightest day</span> — payroll lands the same week as the quarterly tax payment. You&apos;ll dip to roughly{" "}
+                                <span className="font-medium">May 15 will be your tightest day</span>, payroll lands the same week as the quarterly tax payment. You&apos;ll dip to roughly{" "}
                                 <span className="font-medium">{fmtUsd(CASHFLOW_TIGHTEST_DAY_BALANCE)}</span> before the Northwind renewal hits on May 14.
                             </li>
                             <li>
-                                About <span className="font-medium">{fmtUsd(CASHFLOW_AT_RISK_AR)}</span> of expected inflow depends on outstanding invoices clearing on time. The Acme invoice is 12 days from due — worth a polite nudge this week.
+                                About <span className="font-medium">{fmtUsd(CASHFLOW_AT_RISK_AR)}</span> of expected inflow depends on outstanding invoices clearing on time. The Acme invoice is 12 days from due, worth a polite nudge this week.
                             </li>
                             <li>
                                 You&apos;re still tracking ahead of last month by ~18% on net cash. Want me to set aside an additional{" "}

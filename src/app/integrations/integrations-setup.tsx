@@ -5,15 +5,16 @@ import { motion, AnimatePresence } from "motion/react";
 import {
     ArrowLeft,
     ArrowRight,
+    Bell01,
     Check,
     CheckCircle,
     ChevronDown,
     Clock,
     CreditCard01,
-    CoinsStacked01,
     BookOpen01,
     InfoCircle,
     Key01,
+    Plus,
     Shield01,
 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
@@ -22,7 +23,7 @@ import { cx } from "@/utils/cx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CategoryId = "payroll" | "accounting" | "banking";
+type CategoryId = "accounting" | "banking" | "notifications";
 
 interface Integration {
     id: string;
@@ -36,7 +37,16 @@ interface Integration {
     priority: "recommended" | "optional";
     steps: string[];
     details: { name: string; email: string; role: string };
+    // Optional URL to a brand logo (SVG). When set, LogoBadge renders the
+    // image instead of the colored-initial fallback.
+    logoUrl?: string;
+    // Optional privacy/limitation note rendered as a callout on the detail
+    // page. Used for inbox-style integrations where Numix only ingests a
+    // subset of messages and the user needs to see the boundary.
+    privacyNote?: string;
 }
+
+const EMAIL_PRIVACY_NOTE = "Numix only pulls emails related to your finances: invoices, receipts, IRS notices, vendor bills, and payment confirmations. We never read personal emails, calendar, contacts, or drafts. The filter rules are visible and editable in Settings → Integrations.";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -82,74 +92,12 @@ const INTEGRATIONS: Integration[] = [
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Adviser" },
     },
     {
-        id: "gusto",
-        name: "Gusto",
-        initials: "GU",
-        color: "#F45B35",
-        category: "payroll",
-        tagline: "Share payroll records for tax filings and R&D credit calculations.",
-        sharedData: ["Payroll runs", "Employee list", "Contractor payments", "Tax withholdings"],
-        time: "~3 min",
-        priority: "recommended",
-        steps: [
-            "Sign in to Gusto as the Primary Administrator",
-            "Go to Settings → Permissions",
-            "In the Gusto Admins card, click Add or edit admins",
-            "Click Add new admin",
-            "Select Not an employee and choose Accountant",
-            "Enter: Name: Numix Finance Team, Email: onboarding@numix.co",
-            "Select Role: Full Access (Global Admin) — Allows payroll, filings, and compliance review",
-            "Click Add Admin",
-        ],
-        details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Full Access (Global Admin)" },
-    },
-    {
-        id: "rippling",
-        name: "Rippling",
-        initials: "RP",
-        color: "#5C4BF5",
-        category: "payroll",
-        tagline: "Pull payroll data automatically for accurate quarterly filings.",
-        sharedData: ["Payroll history", "Benefits data", "Headcount reports"],
-        time: "~3 min",
-        priority: "recommended",
-        steps: [
-            "Sign in to Rippling as an Admin",
-            "Go to Company Settings → User Management",
-            "Click Invite User",
-            "Enter the email address below",
-            "Assign the Payroll Admin role",
-            "Click Send Invite",
-        ],
-        details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Payroll Admin" },
-    },
-    {
-        id: "deel",
-        name: "Deel",
-        initials: "DL",
-        color: "#19181A",
-        category: "payroll",
-        tagline: "Import global contractor payments for 1099 and international tax reporting.",
-        sharedData: ["Contractor payments", "Worker classification", "Contract history"],
-        time: "~2 min",
-        priority: "recommended",
-        steps: [
-            "Sign in to Deel as an Admin",
-            "Go to Organization Settings → Team Members",
-            "Click Invite Member",
-            "Enter the email address below",
-            "Set role to Finance Manager",
-            "Click Send Invite",
-        ],
-        details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "Finance Manager" },
-    },
-    {
         id: "mercury",
         name: "Mercury",
         initials: "MC",
         color: "#1E2A3A",
         category: "banking",
-        tagline: "Read-only access to your transactions — no more manual statement uploads.",
+        tagline: "Read-only access to your transactions, no more manual statement uploads.",
         sharedData: ["Account balances", "Transaction history", "Wire transfers"],
         time: "~1 min",
         priority: "recommended",
@@ -223,16 +171,120 @@ const INTEGRATIONS: Integration[] = [
         ],
         details: { name: "Numix Finance Team", email: "onboarding@numix.co", role: "View Only" },
     },
+    {
+        id: "gmail",
+        name: "Gmail",
+        initials: "GM",
+        color: "#EA4335",
+        category: "notifications",
+        tagline: "Auto-pull financial emails (invoices, receipts, IRS notices) from Gmail and Google Workspace.",
+        sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
+        time: "~2 min",
+        priority: "recommended",
+        steps: [
+            "Click \"Connect Gmail\" below",
+            "Sign in to your Google account",
+            "Review the requested permissions (read-only, filtered)",
+            "Approve access. Numix can immediately start ingesting matched emails.",
+        ],
+        details: { name: "olivia@acme.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        privacyNote: EMAIL_PRIVACY_NOTE,
+    },
+    {
+        id: "outlook",
+        name: "Outlook 365",
+        initials: "OL",
+        color: "#0078D4",
+        category: "notifications",
+        tagline: "Auto-pull financial emails from Outlook, Microsoft 365, and Hotmail accounts.",
+        sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
+        time: "~2 min",
+        priority: "recommended",
+        steps: [
+            "Click \"Connect Outlook\" below",
+            "Sign in with your Microsoft account",
+            "Review the requested permissions (read-only, filtered)",
+            "Approve access in the Microsoft consent dialog",
+        ],
+        details: { name: "olivia@acme.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        privacyNote: EMAIL_PRIVACY_NOTE,
+    },
+    {
+        id: "icloud-mail",
+        name: "iCloud Mail",
+        initials: "IC",
+        color: "#007AFF",
+        category: "notifications",
+        tagline: "Auto-pull financial emails from your Apple iCloud Mail account.",
+        sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
+        time: "~3 min",
+        priority: "optional",
+        steps: [
+            "Generate an app-specific password at appleid.apple.com",
+            "Paste the password into the field Numix shows next",
+            "Confirm the IMAP server settings",
+            "Approve the filter rules Numix will apply",
+        ],
+        details: { name: "olivia@icloud.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        privacyNote: EMAIL_PRIVACY_NOTE,
+    },
+    {
+        id: "yahoo-mail",
+        name: "Yahoo Mail",
+        initials: "YM",
+        color: "#6001D2",
+        category: "notifications",
+        tagline: "Auto-pull financial emails from your Yahoo Mail or AOL Mail account.",
+        sharedData: ["Financial emails matching filters", "Tax-related correspondence", "Vendor & payment notifications"],
+        time: "~3 min",
+        priority: "optional",
+        steps: [
+            "Generate an app password in Yahoo Account Security",
+            "Paste the password into the field Numix shows next",
+            "Confirm the IMAP server settings",
+            "Approve the filter rules Numix will apply",
+        ],
+        details: { name: "olivia@yahoo.com", email: "tax-reminders@numix.ai", role: "Read-only (filtered)" },
+        privacyNote: EMAIL_PRIVACY_NOTE,
+    },
+    {
+        id: "slack",
+        name: "Slack",
+        initials: "SL",
+        color: "#4A154B",
+        category: "notifications",
+        tagline: "Get reminders and updates in your team's Slack workspace.",
+        sharedData: ["Channel notifications", "Direct messages", "File uploads"],
+        time: "~2 min",
+        priority: "recommended",
+        steps: [
+            "Click \"Add Numix to Slack\" below",
+            "Sign in to your Slack workspace as an Admin",
+            "Choose a channel for Numix to post in (e.g. #finance)",
+            "Approve the requested permissions",
+        ],
+        details: { name: "Acme Workspace", email: "numix-app@slack.com", role: "Channel: #finance" },
+    },
+    {
+        id: "sms",
+        name: "SMS",
+        initials: "TX",
+        color: "#10B981",
+        category: "notifications",
+        tagline: "Get critical tax-deadline reminders by text message.",
+        sharedData: ["Deadline reminders", "Payment confirmations", "Critical alerts"],
+        time: "~30 sec",
+        priority: "optional",
+        steps: [
+            "Enter your mobile number below",
+            "Reply YES to the verification text we send",
+            "Pick which alert types you want by SMS",
+        ],
+        details: { name: "+1 (415) 555-0123", email: "+1 (415) 555-NUMIX", role: "SMS Notifications" },
+    },
 ];
 
 const ACCESS_CATEGORIES = [
-    {
-        id: "payroll" as CategoryId,
-        label: "Payroll Systems",
-        accessLabel: "Payroll Access",
-        description: "Used for wage validation, R&D credit calc, officer comp",
-        icon: CoinsStacked01,
-    },
     {
         id: "accounting" as CategoryId,
         label: "Ledger / Accounting",
@@ -246,6 +298,13 @@ const ACCESS_CATEGORIES = [
         accessLabel: "Banking Access",
         description: "Used for reconciliation + expense classification",
         icon: CreditCard01,
+    },
+    {
+        id: "notifications" as CategoryId,
+        label: "Notifications & Channels",
+        accessLabel: "Notification Access",
+        description: "Where Numix reaches you with reminders and updates",
+        icon: Bell01,
     },
 ];
 
@@ -317,6 +376,19 @@ function GrantAccessDetail({
                         </div>
                     </div>
 
+                    {/* Privacy / limitation callout for inbox-style integrations */}
+                    {integration.privacyNote && (
+                        <div className="mb-6 rounded-xl border border-warning bg-warning-secondary/40 p-4">
+                            <div className="flex items-start gap-3">
+                                <Shield01 className="mt-0.5 size-5 shrink-0 text-fg-warning-primary" aria-hidden />
+                                <div>
+                                    <p className="text-sm font-semibold text-primary">What Numix can &amp; cannot see</p>
+                                    <p className="mt-1 text-xs leading-relaxed text-secondary">{integration.privacyNote}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Steps */}
                     <div className="mb-6">
                         <h3 className="mb-4 text-sm font-semibold text-primary">
@@ -378,18 +450,34 @@ function GrantAccessDetail({
     );
 }
 
+interface CustomIntegration {
+    id: string;
+    name: string;
+    initials: string;
+    color: string;
+    category: CategoryId;
+}
+
 function CategoryRow({
     category,
     connected,
+    customs,
     onSelect,
+    onAddCustom,
+    onRemoveCustom,
 }: {
     category: (typeof ACCESS_CATEGORIES)[0];
     connected: Set<string>;
+    customs: CustomIntegration[];
     onSelect: (integration: Integration) => void;
+    onAddCustom: (categoryId: CategoryId, name: string) => void;
+    onRemoveCustom: (id: string) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
+    const [adding, setAdding] = useState(false);
+    const [addName, setAddName] = useState("");
     const integrations = INTEGRATIONS.filter((i) => i.category === category.id);
-    const connectedCount = integrations.filter((i) => connected.has(i.id)).length;
+    const connectedCount = integrations.filter((i) => connected.has(i.id)).length + customs.length;
     const hasConnection = connectedCount > 0;
     const Icon = category.icon;
 
@@ -466,6 +554,84 @@ function CategoryRow({
                                     </div>
                                 );
                             })}
+
+                            {/* Custom tools the user has added themselves */}
+                            {customs.map((c) => (
+                                <div key={c.id} className="flex items-center gap-3 border-b border-secondary px-4 py-3 last:border-b-0">
+                                    <LogoBadge initials={c.initials} color={c.color} />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-medium text-primary">{c.name}</p>
+                                            <Badge color="gray" type="pill-color" size="sm">Custom</Badge>
+                                        </div>
+                                        <p className="text-xs text-tertiary">Added by you</p>
+                                    </div>
+                                    <div className="shrink-0 flex items-center gap-3">
+                                        <span className="flex items-center gap-1 text-xs font-medium text-success-primary">
+                                            <Check className="size-3.5" aria-hidden />
+                                            Connected
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => onRemoveCustom(c.id)}
+                                            className="text-xs text-quaternary transition duration-100 ease-linear hover:text-secondary"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Add your own tool */}
+                            <div className="border-t border-secondary bg-secondary/30 px-4 py-3">
+                                {adding ? (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={addName}
+                                            onChange={(e) => setAddName(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    if (addName.trim()) {
+                                                        onAddCustom(category.id, addName.trim());
+                                                        setAddName("");
+                                                        setAdding(false);
+                                                    }
+                                                }
+                                                if (e.key === "Escape") { setAdding(false); setAddName(""); }
+                                            }}
+                                            placeholder={category.id === "banking" ? "e.g., First Republic Business" : category.id === "accounting" ? "e.g., FreshBooks" : "e.g., Microsoft Teams"}
+                                            className="flex-1 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                                            autoFocus
+                                        />
+                                        <Button color="secondary" size="sm" onClick={() => { setAdding(false); setAddName(""); }}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            color="primary"
+                                            size="sm"
+                                            isDisabled={!addName.trim()}
+                                            onClick={() => {
+                                                onAddCustom(category.id, addName.trim());
+                                                setAddName("");
+                                                setAdding(false);
+                                            }}
+                                        >
+                                            Add
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setAdding(true); setAddName(""); }}
+                                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-secondary bg-primary px-3 py-2 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-primary_alt/30 hover:text-brand-secondary"
+                                    >
+                                        <Plus className="size-4" />
+                                        Add your own {category.id === "banking" ? "banking" : category.id === "accounting" ? "accounting" : "notification"} tool
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -483,11 +649,26 @@ export function IntegrationsSetup({
     onComplete: (connectedCount: number, totalCount: number) => void;
     onBack?: () => void;
 }) {
-    const [connected, setConnected] = useState<Set<string>>(new Set());
+    // Demo: every page reset starts with zero connections.
+    const [connected, setConnected] = useState<Set<string>>(() => new Set());
     const [completing, setCompleting] = useState(false);
     const [activeIntegration, setActiveIntegration] = useState<Integration | null>(null);
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [customs, setCustoms] = useState<CustomIntegration[]>([]);
     const confirmRef = useRef<HTMLDivElement>(null);
+
+    function handleAddCustom(categoryId: CategoryId, name: string) {
+        const id = `custom-${categoryId}-${Date.now()}`;
+        const initials = name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "??";
+        const item: CustomIntegration = { id, name, initials, color: "#6B7280", category: categoryId };
+        setCustoms((prev) => [...prev, item]);
+        setConnected((prev) => new Set([...prev, id]));
+    }
+
+    function handleRemoveCustom(id: string) {
+        setCustoms((prev) => prev.filter((c) => c.id !== id));
+        setConnected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    }
 
     useEffect(() => {
         if (!confirmOpen) return;
@@ -534,7 +715,7 @@ export function IntegrationsSetup({
     // ── Main list page ───────────────────────────────────────────────────────
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-primary">
-            {/* ── Top bar — logo ──────────────────────────────────────────────── */}
+            {/* ── Top bar, logo ──────────────────────────────────────────────── */}
             <div className="shrink-0 px-6 pt-6">
                 <img src="/numix-logo.png" alt="Numix" className="h-8 w-auto" />
             </div>
@@ -553,7 +734,7 @@ export function IntegrationsSetup({
                             </span>
                         </div>
                         <p className="mt-2 text-sm text-tertiary">
-                            We need read-only access to pull your financial data — takes about 3–5 minutes. Skip anything and come back later.
+                            We need read-only access to pull your financial data, takes about 3–5 minutes. Skip anything and come back later.
                         </p>
                     </div>
 
@@ -574,8 +755,8 @@ export function IntegrationsSetup({
                                                 Connected
                                             </span>
                                         ) : (
-                                            <span className="text-xs font-medium text-warning-primary">
-                                                Pending
+                                            <span className="text-xs font-medium text-tertiary">
+                                                Not set up yet
                                             </span>
                                         )}
                                     </div>
@@ -591,7 +772,10 @@ export function IntegrationsSetup({
                                 key={category.id}
                                 category={category}
                                 connected={connected}
+                                customs={customs.filter((c) => c.category === category.id)}
                                 onSelect={setActiveIntegration}
+                                onAddCustom={handleAddCustom}
+                                onRemoveCustom={handleRemoveCustom}
                             />
                         ))}
                     </div>
@@ -617,7 +801,7 @@ export function IntegrationsSetup({
                     </Button>
                     <div className="relative" ref={confirmRef}>
                         <Button
-                            color="primary"
+                            color="secondary"
                             size="md"
                             iconTrailing={completing ? undefined : ArrowRight}
                             isLoading={completing}

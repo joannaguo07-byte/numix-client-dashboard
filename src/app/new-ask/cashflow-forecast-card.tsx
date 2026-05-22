@@ -2,9 +2,9 @@ import { ArrowDownRight, ArrowUpRight, TrendUp01 } from "@untitledui/icons";
 import { cx } from "@/utils/cx";
 
 const INFLOWS = [
-    { label: "Stripe — recurring subscriptions", date: "May 1 – May 30", amount: 48200 },
+    { label: "Stripe, recurring subscriptions", date: "May 1 – May 30", amount: 48200 },
     { label: "Outstanding invoices (Acme, Loom, Figma)", date: "Expected May 8 – May 22", amount: 27450 },
-    { label: "Annual contract renewal — Northwind", date: "May 14", amount: 18000 },
+    { label: "Annual contract renewal, Northwind", date: "May 14", amount: 18000 },
 ];
 
 const OUTFLOWS = [

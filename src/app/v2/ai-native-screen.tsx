@@ -183,7 +183,7 @@ const TIMELINE: TimelineEvent[] = [
     },
     {
         id: "t2",
-        text: "Detected duplicate vendor payment — flagged for review",
+        text: "Detected duplicate vendor payment, flagged for review",
         timestamp: "5 hours ago",
         icon: AlertCircle,
     },
@@ -1056,7 +1056,7 @@ function SettingsView() {
 
 const SIMULATED_RESPONSES: Record<string, string> = {
     default:
-        "Based on your current financial data, here's what I can tell you:\n\nYour revenue is trending upward at $1.24M (+12.3% MoM), while expenses remain controlled at $828K. Your cash position is strong with $453K in operating cash flow.\n\nThe most notable items requiring attention are:\n1. Tax filing deadline in 12 days\n2. 3 pending transactions totaling $2,847\n3. Marketing spend has increased 27% — worth reviewing if the ROI justifies the increase.\n\nWould you like me to dive deeper into any of these areas?",
+        "Based on your current financial data, here's what I can tell you:\n\nYour revenue is trending upward at $1.24M (+12.3% MoM), while expenses remain controlled at $828K. Your cash position is strong with $453K in operating cash flow.\n\nThe most notable items requiring attention are:\n1. Tax filing deadline in 12 days\n2. 3 pending transactions totaling $2,847\n3. Marketing spend has increased 27%, worth reviewing if the ROI justifies the increase.\n\nWould you like me to dive deeper into any of these areas?",
 };
 
 function useSimulatedStream() {

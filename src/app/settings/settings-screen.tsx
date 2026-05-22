@@ -34,7 +34,7 @@ import { cx } from "@/utils/cx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Section =
+export type Section =
     | "profile"
     | "notifications"
     | "security"
@@ -61,7 +61,7 @@ const NAV_GROUPS: { label: string; items: { id: Section; label: string; icon: Re
         items: [
             { id: "company", label: "Company", icon: Building01 },
             { id: "team", label: "Team & Permissions", icon: Users01 },
-            { id: "integrations", label: "Access", icon: Link01 },
+            { id: "integrations", label: "Integrations", icon: Link01 },
             { id: "tax", label: "Tax & Compliance", icon: File01 },
             { id: "billing", label: "Billing & Plan", icon: CreditCard01 },
         ],
@@ -299,9 +299,9 @@ function SecuritySection() {
     const [showEin, setShowEin] = useState(false);
 
     const sessions = [
-        { device: "MacBook Pro — Chrome", location: "San Francisco, CA", time: "Active now", current: true },
-        { device: "iPhone 15 — Safari", location: "San Francisco, CA", time: "2 hours ago", current: false },
-        { device: "iPad — Safari", location: "New York, NY", time: "3 days ago", current: false },
+        { device: "MacBook Pro, Chrome", location: "San Francisco, CA", time: "Active now", current: true },
+        { device: "iPhone 15, Safari", location: "San Francisco, CA", time: "2 hours ago", current: false },
+        { device: "iPad, Safari", location: "New York, NY", time: "3 days ago", current: false },
     ];
 
     const logins = [
@@ -323,7 +323,7 @@ function SecuritySection() {
                     <div>
                         <p className="text-sm font-medium text-secondary">Two-factor authentication</p>
                         <p className="mt-0.5 text-xs text-tertiary">
-                            {mfaEnabled ? "Enabled via Authenticator app" : "Not enabled — your account is less secure"}
+                            {mfaEnabled ? "Enabled via Authenticator app" : "Not enabled, your account is less secure"}
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -389,8 +389,8 @@ function SecuritySection() {
                 <p className="mb-4 text-xs text-tertiary">A read-only audit of what your CPA firm has viewed or downloaded.</p>
                 <div className="divide-y divide-secondary">
                     {[
-                        { action: "Viewed payroll report — Q4 2024", actor: "Sarah Chen, Numix CPA", time: "Feb 25" },
-                        { action: "Downloaded tax draft — 2024 return", actor: "Marcus Rivera, Numix CPA", time: "Feb 22" },
+                        { action: "Viewed payroll report, Q4 2024", actor: "Sarah Chen, Numix CPA", time: "Feb 25" },
+                        { action: "Downloaded tax draft, 2024 return", actor: "Marcus Rivera, Numix CPA", time: "Feb 22" },
                         { action: "Synced QuickBooks transactions", actor: "Numix System", time: "Feb 20" },
                     ].map((entry) => (
                         <div key={entry.action} className="py-3">
@@ -453,7 +453,7 @@ function CompanySection() {
                             options={["December 31", "March 31", "June 30", "September 30"]}
                         />
                     </FieldRow>
-                    <FieldRow label="EIN (Tax ID)" hint="Masked for security — click to reveal">
+                    <FieldRow label="EIN (Tax ID)" hint="Masked for security, click to reveal">
                         <TextInput defaultValue="••-•••7842" type="text" />
                     </FieldRow>
                     <FieldRow label="State of incorporation">
@@ -620,19 +620,11 @@ const INTEGRATION_GROUPS = [
         ],
     },
     {
-        label: "Payroll",
-        items: [
-            { id: "gusto", name: "Gusto", initials: "GU", color: "#F45B35", lastSync: "4 hours ago", defaultConnected: true },
-            { id: "rippling", name: "Rippling", initials: "RP", color: "#5C4BF5", lastSync: null, defaultConnected: false },
-            { id: "deel", name: "Deel", initials: "DL", color: "#19181A", lastSync: null, defaultConnected: false },
-        ],
-    },
-    {
         label: "Banking",
         items: [
             { id: "mercury", name: "Mercury", initials: "MC", color: "#1E2A3A", lastSync: "30 min ago", defaultConnected: true },
+            { id: "brex", name: "Brex", initials: "BX", color: "#FF5233", lastSync: "1 hour ago", defaultConnected: true },
             { id: "chase", name: "Chase Business", initials: "CH", color: "#117ACA", lastSync: null, defaultConnected: false },
-            { id: "brex", name: "Brex", initials: "BX", color: "#FF5233", lastSync: null, defaultConnected: false },
         ],
     },
     {
@@ -644,14 +636,26 @@ const INTEGRATION_GROUPS = [
     },
 ];
 
+interface CustomIntegration {
+    id: string;
+    name: string;
+    initials: string;
+    color: string;
+    lastSync: string | null;
+    defaultConnected: boolean;
+}
+
 function IntegrationsSection({ onSetupComplete }: { onSetupComplete?: () => void }) {
     const defaultConnected = new Set(
         INTEGRATION_GROUPS.flatMap((g) => g.items.filter((i) => i.defaultConnected).map((i) => i.id)),
     );
     const [connected, setConnected] = useState<Set<string>>(defaultConnected);
     const [connecting, setConnecting] = useState<string | null>(null);
+    const [customItems, setCustomItems] = useState<Record<string, CustomIntegration[]>>({});
+    const [addingGroup, setAddingGroup] = useState<string | null>(null);
+    const [addName, setAddName] = useState("");
 
-    const totalAll = INTEGRATION_GROUPS.flatMap((g) => g.items).length;
+    const totalAll = INTEGRATION_GROUPS.flatMap((g) => g.items).length + Object.values(customItems).flat().length;
 
     async function handleConnect(id: string) {
         setConnecting(id);
@@ -664,8 +668,32 @@ function IntegrationsSection({ onSetupComplete }: { onSetupComplete?: () => void
         setConnecting(null);
     }
 
-    function handleDisconnect(id: string) {
+    function handleDisconnect(id: string, isCustom: boolean, groupLabel?: string) {
         setConnected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+        if (isCustom && groupLabel) {
+            // Custom rows aren't part of the catalogue: removing the connection
+            // also removes the row, otherwise the user is stuck with a dead
+            // "Connect" button for a tool that has no real auth flow.
+            setCustomItems((prev) => ({
+                ...prev,
+                [groupLabel]: (prev[groupLabel] ?? []).filter((item) => item.id !== id),
+            }));
+        }
+    }
+
+    function handleAddCustom(groupLabel: string) {
+        const name = addName.trim();
+        if (!name) return;
+        const id = `custom-${groupLabel.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`;
+        const initials = name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "??";
+        const newItem: CustomIntegration = { id, name, initials, color: "#6B7280", lastSync: "Just now", defaultConnected: true };
+        setCustomItems((prev) => ({
+            ...prev,
+            [groupLabel]: [...(prev[groupLabel] ?? []), newItem],
+        }));
+        setConnected((prev) => new Set([...prev, id]));
+        setAddingGroup(null);
+        setAddName("");
     }
 
     const totalConnected = connected.size;
@@ -674,7 +702,7 @@ function IntegrationsSection({ onSetupComplete }: { onSetupComplete?: () => void
         <div className="space-y-5">
             <SectionHeader
                 title="Access"
-                description="Connect your financial tools so your CPA has the access they need — no manual exports required."
+                description="Connect your financial tools so your CPA has the access they need, no manual exports required."
             />
 
             {/* Summary */}
@@ -683,73 +711,117 @@ function IntegrationsSection({ onSetupComplete }: { onSetupComplete?: () => void
                     {totalConnected}
                 </div>
                 <div>
-                    <p className="text-sm font-semibold text-primary">{totalConnected} of {totalAll} tools connected</p>
-                    <p className="text-xs text-tertiary">All connections are read-only — we can&apos;t move money or make changes.</p>
+                    <p className="text-sm font-semibold text-primary">{totalConnected} {totalConnected === 1 ? "tool" : "tools"} connected</p>
+                    <p className="text-xs text-tertiary">All connections are read-only, we can&apos;t move money or make changes.</p>
                 </div>
             </div>
 
-            {INTEGRATION_GROUPS.map((group) => (
-                <Card key={group.label}>
-                    <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-quaternary">{group.label}</p>
-                    <div className="divide-y divide-secondary">
-                        {group.items.map((item) => {
-                            const isConnected = connected.has(item.id);
-                            const isConnecting = connecting === item.id;
-                            return (
-                                <div key={item.id} className="flex items-center justify-between gap-4 py-3.5">
-                                    <div className="flex items-center gap-3">
-                                        <div
-                                            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
-                                            style={{ backgroundColor: item.color }}
-                                        >
-                                            {item.initials}
+            {INTEGRATION_GROUPS.map((group) => {
+                const customs = customItems[group.label] ?? [];
+                const allItems: ((typeof group.items)[number] | CustomIntegration)[] = [...group.items, ...customs];
+                const isAdding = addingGroup === group.label;
+                return (
+                    <Card key={group.label}>
+                        <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-quaternary">{group.label}</p>
+                        <div className="divide-y divide-secondary">
+                            {allItems.map((item) => {
+                                const isConnected = connected.has(item.id);
+                                const isConnecting = connecting === item.id;
+                                const isCustom = item.id.startsWith("custom-");
+                                return (
+                                    <div key={item.id} className="flex items-center justify-between gap-4 py-3.5">
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
+                                                style={{ backgroundColor: item.color }}
+                                            >
+                                                {item.initials}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-medium text-primary">{item.name}</p>
+                                                    {isConnected && (
+                                                        <BadgeWithDot color="success" type="pill-color" size="sm">
+                                                            Connected
+                                                        </BadgeWithDot>
+                                                    )}
+                                                    {isCustom && (
+                                                        <Badge color="gray" type="pill-color" size="sm">Custom</Badge>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-tertiary">
+                                                    {isConnected && item.lastSync
+                                                        ? `Last synced ${item.lastSync}`
+                                                        : isConnected
+                                                          ? "Connected"
+                                                          : "Not connected"}
+                                                </p>
+                                            </div>
                                         </div>
                                         <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-sm font-medium text-primary">{item.name}</p>
-                                                {isConnected && (
-                                                    <BadgeWithDot color="success" type="pill-color" size="sm">
-                                                        Connected
-                                                    </BadgeWithDot>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-tertiary">
-                                                {isConnected && item.lastSync
-                                                    ? `Last synced ${item.lastSync}`
-                                                    : isConnected
-                                                      ? "Connected"
-                                                      : "Not connected"}
-                                            </p>
+                                            {isConnected ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDisconnect(item.id, isCustom, group.label)}
+                                                    className="text-xs text-quaternary transition duration-100 ease-linear hover:text-secondary"
+                                                >
+                                                    {isCustom ? "Remove" : "Disconnect"}
+                                                </button>
+                                            ) : (
+                                                <Button
+                                                    color="secondary"
+                                                    size="sm"
+                                                    isLoading={isConnecting}
+                                                    showTextWhileLoading
+                                                    onClick={() => handleConnect(item.id)}
+                                                    isDisabled={isConnecting}
+                                                >
+                                                    {isConnecting ? "Connecting…" : "Connect"}
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
-                                    <div>
-                                        {isConnected ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDisconnect(item.id)}
-                                                className="text-xs text-quaternary transition duration-100 ease-linear hover:text-secondary"
-                                            >
-                                                Disconnect
-                                            </button>
-                                        ) : (
-                                            <Button
-                                                color="secondary"
-                                                size="sm"
-                                                isLoading={isConnecting}
-                                                showTextWhileLoading
-                                                onClick={() => handleConnect(item.id)}
-                                                isDisabled={isConnecting}
-                                            >
-                                                {isConnecting ? "Connecting…" : "Connect"}
-                                            </Button>
-                                        )}
-                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Add custom tool affordance */}
+                        <div className="mt-3 border-t border-secondary pt-3">
+                            {isAdding ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={addName}
+                                        onChange={(e) => setAddName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") { e.preventDefault(); handleAddCustom(group.label); }
+                                            if (e.key === "Escape") { setAddingGroup(null); setAddName(""); }
+                                        }}
+                                        placeholder={`e.g., ${group.label === "Banking" ? "First Republic Business" : group.label === "Accounting" ? "FreshBooks" : "Divvy"}`}
+                                        className="flex-1 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none"
+                                        autoFocus
+                                    />
+                                    <Button color="secondary" size="sm" onClick={() => { setAddingGroup(null); setAddName(""); }}>
+                                        Cancel
+                                    </Button>
+                                    <Button color="primary" size="sm" isDisabled={!addName.trim()} onClick={() => handleAddCustom(group.label)}>
+                                        Add
+                                    </Button>
                                 </div>
-                            );
-                        })}
-                    </div>
-                </Card>
-            ))}
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => { setAddingGroup(group.label); setAddName(""); }}
+                                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-secondary px-3 py-2 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-primary_alt/30 hover:text-brand-secondary"
+                                >
+                                    <Plus className="size-4" />
+                                    Add your own {group.label.toLowerCase()} tool
+                                </button>
+                            )}
+                        </div>
+                    </Card>
+                );
+            })}
         </div>
     );
 }
@@ -761,7 +833,7 @@ function TaxSection() {
         <div className="space-y-5">
             <SectionHeader
                 title="Tax & Compliance"
-                description="Your tax profile and filing obligations. Your CPA manages the details — this is your visibility layer."
+                description="Your tax profile and filing obligations. Your CPA manages the details, this is your visibility layer."
             />
 
             <Card>
@@ -770,7 +842,7 @@ function TaxSection() {
                     {[
                         { label: "Federal tax classification", value: "C-Corporation (Form 1120)" },
                         { label: "Tax year", value: "Calendar year (Jan 1 – Dec 31)" },
-                        { label: "Estimated tax payments", value: "Quarterly — Q1/Q2/Q3/Q4" },
+                        { label: "Estimated tax payments", value: "Quarterly, Q1/Q2/Q3/Q4" },
                         { label: "State nexus", value: "CA, NY, DE" },
                     ].map((r) => (
                         <div key={r.label} className="flex items-center justify-between py-3">
@@ -826,10 +898,10 @@ function TaxSection() {
                 <p className="mb-4 text-sm font-semibold text-secondary">Upcoming Filing Dates</p>
                 <div className="divide-y divide-secondary">
                     {[
-                        { filing: "Form 941 — Q4 2024 Payroll Tax", due: "Jan 31, 2026", status: "Filed" },
-                        { filing: "Federal Tax Return — 2024 (C-Corp)", due: "Apr 15, 2026", status: "In Progress" },
-                        { filing: "CA State Tax Return — 2024", due: "Apr 15, 2026", status: "In Progress" },
-                        { filing: "Form 941 — Q1 2025 Payroll Tax", due: "Apr 30, 2026", status: "Upcoming" },
+                        { filing: "Form 941, Q4 2024 Payroll Tax", due: "Jan 31, 2026", status: "Filed" },
+                        { filing: "Federal Tax Return, 2024 (C-Corp)", due: "Apr 15, 2026", status: "In Progress" },
+                        { filing: "CA State Tax Return, 2024", due: "Apr 15, 2026", status: "In Progress" },
+                        { filing: "Form 941, Q1 2025 Payroll Tax", due: "Apr 30, 2026", status: "Upcoming" },
                     ].map((f) => (
                         <div key={f.filing} className="flex items-center justify-between gap-4 py-3">
                             <div>
@@ -855,17 +927,17 @@ function TaxSection() {
 
 function BillingSection() {
     const invoices = [
-        { date: "Feb 1, 2026", desc: "Numix Growth Plan — February", amount: "$349", status: "Paid" },
-        { date: "Jan 1, 2026", desc: "Numix Growth Plan — January", amount: "$349", status: "Paid" },
-        { date: "Dec 1, 2025", desc: "Numix Growth Plan — December", amount: "$349", status: "Paid" },
-        { date: "Nov 1, 2025", desc: "Numix Growth Plan — November", amount: "$349", status: "Paid" },
+        { date: "Feb 1, 2026", desc: "Numix Growth Plan, February", amount: "$349", status: "Paid" },
+        { date: "Jan 1, 2026", desc: "Numix Growth Plan, January", amount: "$349", status: "Paid" },
+        { date: "Dec 1, 2025", desc: "Numix Growth Plan, December", amount: "$349", status: "Paid" },
+        { date: "Nov 1, 2025", desc: "Numix Growth Plan, November", amount: "$349", status: "Paid" },
     ];
 
     return (
         <div className="space-y-5">
             <SectionHeader
                 title="Billing & Plan"
-                description="Your Numix subscription. Your CPA firm manages plan configuration — contact them to upgrade."
+                description="Your Numix subscription. Your CPA firm manages plan configuration, contact them to upgrade."
             />
 
             <Card>
@@ -1018,9 +1090,9 @@ function HelpSection({ onMessageAccountant }: { onMessageAccountant?: () => void
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function SettingsScreen({ onBack, setupIncomplete, onSetupComplete }: { onBack: () => void; setupIncomplete?: boolean; onSetupComplete?: () => void }) {
+export function SettingsScreen({ onBack, setupIncomplete, onSetupComplete, initialSection }: { onBack: () => void; setupIncomplete?: boolean; onSetupComplete?: () => void; initialSection?: Section }) {
     const { signOut } = useAuth();
-    const [activeSection, setActiveSection] = useState<Section>("profile");
+    const [activeSection, setActiveSection] = useState<Section>(initialSection ?? "profile");
 
     async function onLogOut() {
         await signOut();
@@ -1096,7 +1168,7 @@ export function SettingsScreen({ onBack, setupIncomplete, onSetupComplete }: { o
                         </div>
                     ))}
 
-                    {/* Help & Log out — bottom of nav */}
+                    {/* Help & Log out, bottom of nav */}
                     <div className="mt-5 border-t border-secondary pt-4">
                         <button
                             type="button"

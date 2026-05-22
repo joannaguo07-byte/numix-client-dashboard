@@ -139,7 +139,7 @@ const REVENUE_STRATEGIES = [
         confidence: 82,
         companies: ["Acme Technologies"],
         deadline: "Q3 2025",
-        description: "Introduce a premium tier with SLA guarantees, dedicated support, and advanced analytics. Target top 20% of existing customers for upsell — estimated 30% conversion rate.",
+        description: "Introduce a premium tier with SLA guarantees, dedicated support, and advanced analytics. Target top 20% of existing customers for upsell, estimated 30% conversion rate.",
     },
     {
         id: "4",
@@ -170,7 +170,7 @@ function ForecastPage() {
 
     return (
         <div className="flex gap-4">
-            {/* Left — main card */}
+            {/* Left, main card */}
             <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-secondary bg-primary">
                 {/* Blue banner header */}
                 <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
@@ -303,9 +303,9 @@ function ForecastPage() {
                 </div>
             </div>
 
-            {/* Right column — sidebar */}
+            {/* Right column, sidebar */}
             <div className="w-64 shrink-0 space-y-4 self-start">
-                {/* AI insight card — gradient like Tax Overview */}
+                {/* AI insight card, gradient like Tax Overview */}
                 <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
                     <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
                     <p className="text-xs text-tertiary">
@@ -317,7 +317,7 @@ function ForecastPage() {
                     </button>
                 </div>
 
-                {/* Milestones card — matches Deadlines card */}
+                {/* Milestones card, matches Deadlines card */}
                 <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
                     <div className="px-4 pt-3 pb-1">
                         <div className="flex items-center gap-2">
@@ -507,7 +507,7 @@ function MakeMoneyPage({ onAskAccountant }: { onAskAccountant?: (prompt: string)
 
     return (
         <div className="overflow-hidden rounded-xl border border-secondary bg-primary">
-            {/* Blue banner header — matches Tax Planning */}
+            {/* Blue banner header, matches Tax Planning */}
             <div className="flex items-center justify-between border-b border-brand/20 bg-brand-primary_alt px-6 py-4">
                 <div>
                     <h3 className="text-sm font-semibold text-primary">Strategic Planning</h3>
@@ -523,7 +523,7 @@ function MakeMoneyPage({ onAskAccountant }: { onAskAccountant?: (prompt: string)
             </div>
 
             <div className="divide-y divide-secondary">
-                {/* Hero impact row — matches Tax Planning savings */}
+                {/* Hero impact row, matches Tax Planning savings */}
                 <div className="flex items-center justify-between px-6 py-5">
                     <div>
                         <p className="text-xs text-tertiary">Estimated Total Impact Across All Strategies</p>
@@ -535,7 +535,7 @@ function MakeMoneyPage({ onAskAccountant }: { onAskAccountant?: (prompt: string)
                     <Button color="secondary" size="sm">View financial projections</Button>
                 </div>
 
-                {/* Filters — company + category */}
+                {/* Filters, company + category */}
                 <div className="px-6 py-5">
                     <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Filters</h3>
                     <div className="flex items-center gap-4">
@@ -569,7 +569,7 @@ function MakeMoneyPage({ onAskAccountant }: { onAskAccountant?: (prompt: string)
                     </div>
                 </div>
 
-                {/* Strategy rows — matches Saving Strategies pattern */}
+                {/* Strategy rows, matches Saving Strategies pattern */}
                 <div className="px-6 py-5">
                     <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-tertiary">Recommended Strategies</h3>
                     <div className="divide-y divide-secondary rounded-lg border border-secondary">
@@ -666,7 +666,7 @@ function MakeMoneyPage({ onAskAccountant }: { onAskAccountant?: (prompt: string)
                     </div>
                 </div>
 
-                {/* AI footer — matches gradient card pattern */}
+                {/* AI footer, matches gradient card pattern */}
                 <div className="px-6 py-5">
                     <div className="rounded-xl bg-gradient-to-r from-purple-200/60 via-purple-100/50 to-blue-200/60 p-4">
                         <Stars01 className="mb-2 size-4 text-fg-brand-secondary_alt" />
@@ -688,7 +688,7 @@ export function CFOScreen({ page = "forecast", onAskAccountant }: CFOScreenProps
 
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-secondary">
-            {/* Header — matches TaxScreen header */}
+            {/* Header, matches TaxScreen header */}
             <div className="shrink-0 px-10 pt-8 pb-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">

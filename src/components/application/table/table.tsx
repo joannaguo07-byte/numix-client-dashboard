@@ -138,7 +138,7 @@ const TableHeader = <T extends object>({ columns, children, bordered = true, cla
                     "relative bg-secondary",
                     size === "sm" ? "h-9" : "h-11",
 
-                    // Row border—using an "after" pseudo-element to avoid the border taking up space.
+                    // Row border, using an "after" pseudo-element to avoid the border taking up space.
                     bordered &&
                         "[&>tr>th]:after:pointer-events-none [&>tr>th]:after:absolute [&>tr>th]:after:inset-x-0 [&>tr>th]:after:bottom-0 [&>tr>th]:after:h-px [&>tr>th]:after:bg-border-secondary [&>tr>th]:focus-visible:after:bg-transparent",
 
@@ -229,7 +229,7 @@ const TableRow = <T extends object>({ columns, children, className, highlightSel
                     size === "sm" ? "h-14" : "h-18",
                     highlightSelectedRow && "selected:bg-secondary",
 
-                    // Row border—using an "after" pseudo-element to avoid the border taking up space.
+                    // Row border, using an "after" pseudo-element to avoid the border taking up space.
                     "[&>td]:after:absolute [&>td]:after:inset-x-0 [&>td]:after:bottom-0 [&>td]:after:h-px [&>td]:after:w-full [&>td]:after:bg-border-secondary last:[&>td]:after:hidden [&>td]:focus-visible:after:opacity-0 focus-visible:[&>td]:after:opacity-0",
 
                     typeof className === "function" ? className(state) : className,
