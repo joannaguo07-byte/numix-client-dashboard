@@ -139,6 +139,22 @@ const CONFIDENCE_OPTIONS = [
     { id: "low", label: "Low (<70%)" },
 ];
 
+// ─── QuickBooks Reconciliation Status ───────────────────────────────────────
+//
+// Bank transactions get reconciled into the QuickBooks ledger. There are
+// three states for any txn: matched (already in QB with the right COA),
+// unmatched (in QB but with conflicting category or no link), and
+// needs-sync (AI flagged it for review before it can be pushed to QB).
+// Status is derived from existing fields so this stays demo-data friendly.
+
+type QbStatus = "matched" | "unmatched" | "needs-sync";
+
+function getQbStatus(t: { confidence: number; id: string }): QbStatus {
+    if (t.confidence < 90) return "needs-sync";
+    if (parseInt(t.id, 10) % 4 === 0) return "unmatched";
+    return "matched";
+}
+
 // ─── Labels (Tax Credit Tags) ─────────────────────────────────────────────
 
 type LabelDef = { id: string; label: string; color: string };
@@ -341,12 +357,1236 @@ function getRdSuggestion(txn: { id: string; labels: string[]; amount: number }):
     return { confidence, estimatedCredit };
 }
 
+// ─── Transaction Document Templates ─────────────────────────────────────────
+// Renders a merchant-appropriate receipt/invoice/statement in the slideout's
+// document preview pane. Each transaction description is classified into a
+// document type and rendered with believable line items and metadata.
+
+type DocTxn = {
+    id: string;
+    date: string;
+    description: string;
+    amount: number;
+    account: string;
+};
+
+function classifyDocument(description: string): string {
+    const d = description.toLowerCase();
+    if (d.includes("airlines") || d.includes("airline")) return "airline";
+    if (d.includes("aws")) return "aws";
+    if (d.includes("zoom")) return "zoom";
+    if (d.includes("figma")) return "figma";
+    if (d.includes("datadog")) return "datadog";
+    if (d.includes("payroll") || d.includes("gusto")) return "payroll";
+    if (d.includes("google ads") || d.includes("ads campaign")) return "google-ads";
+    if (d.includes("wework") || d.includes("rent")) return "wework";
+    if (d.includes("stripe")) return "stripe";
+    if (d.includes("client payment") || d.includes("year-end client")) return "client-invoice";
+    if (d.includes("amazon")) return "amazon";
+    if (d.includes("uber") || d.includes("lyft")) return "uber";
+    if (d.includes("dinner") || d.includes("restaurant")) return "restaurant";
+    return "generic";
+}
+
+const fmtMoney = (n: number) =>
+    Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function TransactionDocument({ txn }: { txn: DocTxn }) {
+    const docType = classifyDocument(txn.description);
+    const amt = Math.abs(txn.amount);
+
+    if (docType === "airline") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-sm bg-error-solid">
+                                <span className="text-sm font-bold leading-none text-white">∆</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">DELTA AIR LINES</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Electronic Ticket Receipt & Itinerary</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Confirmation: <span className="font-mono font-semibold text-primary">DL7K9X4M</span></p>
+                        <p>Issued: {txn.date}</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-error-solid pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Passenger Information</p>
+                    <div className="mt-2 grid grid-cols-2 gap-x-10 gap-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Name</span>
+                            <span className="font-medium text-primary">DOE/JOHN MR</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">SkyMiles #</span>
+                            <span className="tabular-nums text-primary">3201478592</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Ticket #</span>
+                            <span className="tabular-nums text-primary">006-2154889012</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Fare Class</span>
+                            <span className="text-primary">Main Cabin (V)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-error-solid pb-1">
+                        <p className="text-xs font-bold text-primary">FLIGHT ITINERARY</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Flight</th>
+                                <th className="pb-1.5 font-semibold text-primary">Route</th>
+                                <th className="pb-1.5 font-semibold text-primary">Depart</th>
+                                <th className="pb-1.5 font-semibold text-primary">Arrive</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-2 align-top text-primary">
+                                    <p className="font-medium">DL 1284</p>
+                                    <p className="text-[10px] text-tertiary">B737-900</p>
+                                </td>
+                                <td className="py-2 align-top text-primary">SFO → JFK</td>
+                                <td className="py-2 align-top text-primary">
+                                    <p>Mar 12, 2026</p>
+                                    <p className="text-[10px] text-tertiary">8:15 AM PT</p>
+                                </td>
+                                <td className="py-2 align-top text-primary">
+                                    <p>Mar 12, 2026</p>
+                                    <p className="text-[10px] text-tertiary">4:45 PM ET</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="py-2 align-top text-primary">
+                                    <p className="font-medium">DL 1719</p>
+                                    <p className="text-[10px] text-tertiary">B737-800</p>
+                                </td>
+                                <td className="py-2 align-top text-primary">JFK → SFO</td>
+                                <td className="py-2 align-top text-primary">
+                                    <p>Mar 15, 2026</p>
+                                    <p className="text-[10px] text-tertiary">6:30 PM ET</p>
+                                </td>
+                                <td className="py-2 align-top text-primary">
+                                    <p>Mar 15, 2026</p>
+                                    <p className="text-[10px] text-tertiary">9:50 PM PT</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-error-solid pb-1">
+                        <p className="text-xs font-bold text-primary">FARE BREAKDOWN</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Base Fare (USD)</span>
+                            <span className="tabular-nums text-primary">$498.00</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">U.S. Transportation Tax</span>
+                            <span className="tabular-nums text-primary">$37.35</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">U.S. Flight Segment Tax</span>
+                            <span className="tabular-nums text-primary">$9.60</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">September 11th Security Fee</span>
+                            <span className="tabular-nums text-primary">$11.20</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Passenger Facility Charge</span>
+                            <span className="tabular-nums text-primary">$27.85</span>
+                        </div>
+                        <div className="flex justify-between border-t border-secondary pt-1.5">
+                            <span className="font-semibold text-primary">Total Charged</span>
+                            <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Payment Method</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "aws") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 items-center rounded-sm bg-primary-solid px-1.5">
+                                <span className="text-[10px] font-bold text-white">aws</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">Amazon Web Services</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">AWS Invoice</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Invoice #: <span className="font-mono font-semibold text-primary">EUSI1-{txn.id}982374</span></p>
+                        <p>Invoice Date: {txn.date}</p>
+                        <p>Account: 824671923457</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-warning-solid pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Bill To</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">123 Business Ave</p>
+                            <p className="text-tertiary">San Francisco, CA 94105</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Billing Period</p>
+                            <p className="mt-1 text-tertiary">Feb 1, 2026 – Feb 28, 2026</p>
+                            <p className="mt-2 font-semibold text-primary">Payment Terms</p>
+                            <p className="mt-1 text-tertiary">Net 0 (auto-charged)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-warning-solid pb-1">
+                        <p className="text-xs font-bold text-primary">CHARGES BY SERVICE</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Service</th>
+                                <th className="pb-1.5 font-semibold text-primary">Usage</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Amazon EC2 (us-east-1)</td>
+                                <td className="py-1.5 text-tertiary">428.2 instance-hrs (p4d.24xlarge)</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.58)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Amazon S3</td>
+                                <td className="py-1.5 text-tertiary">2.4 TB storage + transfer</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.12)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Amazon RDS</td>
+                                <td className="py-1.5 text-tertiary">db.r6g.xlarge × 720 hrs</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.16)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Amazon SageMaker</td>
+                                <td className="py-1.5 text-tertiary">ML training jobs</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.09)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Data Transfer Out</td>
+                                <td className="py-1.5 text-tertiary">186 GB</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.05)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Sales Tax</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total Due</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)} USD</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "zoom" || docType === "figma" || docType === "datadog") {
+        const vendor =
+            docType === "zoom"
+                ? {
+                      name: "Zoom Video Communications",
+                      product: "Zoom Pro – Annual Plan",
+                      monogram: "Z",
+                      monoBg: "bg-blue-600",
+                      desc: "Subscription Invoice",
+                      seats: 10,
+                      seatLabel: "Pro hosts",
+                      tagline: "Video conferencing for teams",
+                  }
+                : docType === "figma"
+                ? {
+                      name: "Figma, Inc.",
+                      product: "Figma Enterprise",
+                      monogram: "F",
+                      monoBg: "bg-purple-500",
+                      desc: "Subscription Receipt",
+                      seats: 12,
+                      seatLabel: "editors",
+                      tagline: "Design platform",
+                  }
+                : {
+                      name: "Datadog, Inc.",
+                      product: "Datadog Pro – Infrastructure Monitoring",
+                      monogram: "D",
+                      monoBg: "bg-purple-500",
+                      desc: "Monthly Invoice",
+                      seats: 24,
+                      seatLabel: "monitored hosts",
+                      tagline: "Cloud monitoring & observability",
+                  };
+
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className={cx("flex h-7 w-7 items-center justify-center rounded", vendor.monoBg)}>
+                                <span className="text-sm font-bold text-white">{vendor.monogram}</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">{vendor.name}</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">{vendor.desc}</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Invoice #: <span className="font-mono font-semibold text-primary">INV-2026-{txn.id.padStart(5, "0")}</span></p>
+                        <p>Invoice Date: {txn.date}</p>
+                        <p>Status: <span className="font-semibold text-success-primary">Paid</span></p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-brand-solid pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Bill To</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">accounts@numix.ai</p>
+                            <p className="text-tertiary">San Francisco, CA</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Subscription</p>
+                            <p className="mt-1 text-tertiary">{vendor.product}</p>
+                            <p className="text-tertiary">Service period: {txn.date} – Apr {txn.date.split(" ")[1]}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-brand-solid pb-1">
+                        <p className="text-xs font-bold text-primary">LINE ITEMS</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Description</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Qty</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Unit Price</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-2">
+                                    <p>{vendor.product}</p>
+                                    <p className="text-[10px] text-tertiary">{vendor.tagline}</p>
+                                </td>
+                                <td className="py-2 text-right tabular-nums">{vendor.seats}</td>
+                                <td className="py-2 text-right tabular-nums">${fmtMoney(amt / vendor.seats)}</td>
+                                <td className="py-2 text-right tabular-nums">${fmtMoney(amt)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Subtotal ({vendor.seats} {vendor.seatLabel})</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Tax</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total Paid</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)} USD</span>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Charged to</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "payroll") {
+        const gross = amt * 0.78;
+        const erTax = amt * 0.14;
+        const benefits = amt * 0.08;
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-500">
+                                <span className="text-sm font-bold text-white">g</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">Gusto</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Payroll Summary</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Pay Date: <span className="font-semibold text-primary">{txn.date}</span></p>
+                        <p>Pay Run ID: <span className="font-mono text-primary">PR-{txn.id}-2026</span></p>
+                        <p>Company EIN: 84-3927561</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-orange-500 pt-4 text-[11px]">
+                    <div className="grid grid-cols-3 gap-x-6">
+                        <div>
+                            <p className="font-semibold text-primary">Pay Period</p>
+                            <p className="mt-1 text-tertiary">{txn.date.replace(/\d+,/, "1,")} – {txn.date}</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Employees Paid</p>
+                            <p className="mt-1 text-tertiary">5 (3 R&D engineers, 2 G&A)</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Total Debit</p>
+                            <p className="mt-1 font-semibold tabular-nums text-primary">${fmtMoney(amt)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-orange-500 pb-1">
+                        <p className="text-xs font-bold text-primary">EMPLOYEE COMPENSATION</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Employee</th>
+                                <th className="pb-1.5 font-semibold text-primary">Role</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Gross</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Net</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">A. Chen</td>
+                                <td className="py-1.5 text-tertiary">Sr. ML Engineer · R&D</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.26)}</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.26 * 0.72)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">M. Patel</td>
+                                <td className="py-1.5 text-tertiary">Sr. Software Engineer · R&D</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.24)}</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.24 * 0.72)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">J. Rodriguez</td>
+                                <td className="py-1.5 text-tertiary">Software Engineer · R&D</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.18)}</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.18 * 0.72)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">S. Kim</td>
+                                <td className="py-1.5 text-tertiary">Head of Operations · G&A</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.18)}</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.18 * 0.72)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">L. Nguyen</td>
+                                <td className="py-1.5 text-tertiary">Designer · G&A</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.14)}</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(gross * 0.14 * 0.72)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-orange-500 pb-1">
+                        <p className="text-xs font-bold text-primary">EMPLOYER COSTS</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Gross Wages</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(gross)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Employer Taxes (FICA, FUTA, SUTA)</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(erTax)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Benefits & 401(k) Match</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(benefits)}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-secondary pt-1.5">
+                            <span className="font-semibold text-primary">Total Payroll Debit</span>
+                            <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Debit Account</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "google-ads") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full ring-1 ring-secondary">
+                                <span className="text-sm font-bold text-blue-600">G</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">Google Ads</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Google LLC · 1600 Amphitheatre Pkwy, Mountain View CA</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Invoice #: <span className="font-mono font-semibold text-primary">5832-0917-2841</span></p>
+                        <p>Invoice Date: {txn.date}</p>
+                        <p>Account ID: 482-194-7726</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-blue-600 pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Bill To</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">finance@numix.ai</p>
+                            <p className="text-tertiary">San Francisco, CA 94105</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Billing Period</p>
+                            <p className="mt-1 text-tertiary">Feb 1 – Feb 28, 2026</p>
+                            <p className="mt-2 font-semibold text-primary">Payment Method</p>
+                            <p className="mt-1 text-tertiary">{txn.account}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-blue-600 pb-1">
+                        <p className="text-xs font-bold text-primary">CAMPAIGN COSTS</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Campaign</th>
+                                <th className="pb-1.5 font-semibold text-primary">Type</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Clicks</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">"AI Bookkeeping" Search</td>
+                                <td className="py-1.5 text-tertiary">Search</td>
+                                <td className="py-1.5 text-right tabular-nums">1,284</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.58)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Numix Brand</td>
+                                <td className="py-1.5 text-tertiary">Search</td>
+                                <td className="py-1.5 text-right tabular-nums">412</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.18)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Retargeting · SaaS Founders</td>
+                                <td className="py-1.5 text-tertiary">Display</td>
+                                <td className="py-1.5 text-right tabular-nums">3,719</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.16)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">YouTube Pre-roll · Product Demo</td>
+                                <td className="py-1.5 text-tertiary">Video</td>
+                                <td className="py-1.5 text-right tabular-nums">8,492 views</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.08)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Regulatory Operating Cost</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total Charged</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)} USD</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "wework") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded bg-primary-solid">
+                                <span className="text-sm font-bold text-white">W</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">WeWork</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Workspace Membership Invoice</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Invoice #: <span className="font-mono font-semibold text-primary">WW-2026-03-0892</span></p>
+                        <p>Invoice Date: {txn.date}</p>
+                        <p>Member ID: NMX-19284</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-brand-solid pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Member</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">accounts@numix.ai</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Workspace Location</p>
+                            <p className="mt-1 text-tertiary">535 Mission Street, Floor 14</p>
+                            <p className="text-tertiary">San Francisco, CA 94105</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-brand-solid pb-1">
+                        <p className="text-xs font-bold text-primary">MEMBERSHIP CHARGES</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Description</th>
+                                <th className="pb-1.5 font-semibold text-primary">Period</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Qty</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">
+                                    <p>Dedicated Desk</p>
+                                    <p className="text-[10px] text-tertiary">ADA-accessible private suite, 24/7 access</p>
+                                </td>
+                                <td className="py-1.5 text-tertiary">Mar 1 – Mar 31, 2026</td>
+                                <td className="py-1.5 text-right tabular-nums">5</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.85)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Conference Room Credits</td>
+                                <td className="py-1.5 text-tertiary">Mar 2026</td>
+                                <td className="py-1.5 text-right tabular-nums">25 hrs</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.09)}</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">Mail & Package Handling</td>
+                                <td className="py-1.5 text-tertiary">Mar 2026</td>
+                                <td className="py-1.5 text-right tabular-nums">1</td>
+                                <td className="py-1.5 text-right tabular-nums">${fmtMoney(amt * 0.06)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Sales Tax</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total Due</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)} USD</span>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Payment Method</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "stripe") {
+        const fee = amt * 0.029 + 0.3;
+        const net = amt - fee;
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 items-center rounded bg-purple-500 px-1.5">
+                                <span className="text-[10px] font-bold text-white">stripe</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">Payment Received</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Stripe payment notification</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Charge ID: <span className="font-mono font-semibold text-primary">ch_3OqJ8XYZ9KLm</span></p>
+                        <p>Payment Date: {txn.date}</p>
+                        <p>Status: <span className="font-semibold text-success-primary">Succeeded</span></p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-purple-500 pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Customer</p>
+                            <p className="mt-1 text-tertiary">{txn.description.replace(/.*Invoice /, "Customer for Invoice ")}</p>
+                            <p className="text-tertiary">cus_NkR82HxYpQv</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Payment Method</p>
+                            <p className="mt-1 text-tertiary">Visa •••• 4242 (Card)</p>
+                            <p className="text-tertiary">USD · Charged in full</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-purple-500 pb-1">
+                        <p className="text-xs font-bold text-primary">CHARGE BREAKDOWN</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Gross Charge</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Stripe Fee (2.9% + $0.30)</span>
+                            <span className="tabular-nums text-primary">−${fmtMoney(fee)}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-secondary pt-1.5">
+                            <span className="font-semibold text-primary">Net Payout</span>
+                            <span className="font-semibold tabular-nums text-primary">${fmtMoney(net)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-purple-500 pb-1">
+                        <p className="text-xs font-bold text-primary">PAYOUT DETAILS</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Payout ID</span>
+                            <span className="font-mono tabular-nums text-primary">po_1OqK9YZAaBbC</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Arrival Date</span>
+                            <span className="text-primary">{txn.date} (T+2)</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Destination</span>
+                            <span className="text-primary">{txn.account}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "client-invoice") {
+        const clientName = txn.description.replace(/.*-\s*/, "").replace(/Year-end\s*/, "");
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <p className="text-base font-bold uppercase tracking-wide text-primary">{clientName}</p>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Customer Remittance Advice</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-2xl font-bold uppercase tracking-wider text-success-primary">PAID</p>
+                        <p className="mt-0.5 text-[11px] text-tertiary">{txn.date}</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-success-solid pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Remitter</p>
+                            <p className="mt-1 text-tertiary">{clientName}</p>
+                            <p className="text-tertiary">ap@{clientName.toLowerCase().replace(/\s+/g, "")}.com</p>
+                            <p className="text-tertiary">Net 30 terms</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Beneficiary</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">EIN: 84-3927561</p>
+                            <p className="text-tertiary">{txn.account}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-success-solid pb-1">
+                        <p className="text-xs font-bold text-primary">INVOICE(S) PAID</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Invoice #</th>
+                                <th className="pb-1.5 font-semibold text-primary">Issued</th>
+                                <th className="pb-1.5 font-semibold text-primary">Description</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-2 font-mono">INV-3892</td>
+                                <td className="py-2 text-tertiary">Feb 27, 2026</td>
+                                <td className="py-2">
+                                    <p>Implementation & advisory services</p>
+                                    <p className="text-[10px] text-tertiary">Monthly engagement, Feb 2026</p>
+                                </td>
+                                <td className="py-2 text-right tabular-nums">${fmtMoney(amt)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Sales Tax</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total Remitted</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)} USD</span>
+                    </div>
+                </div>
+
+                <div className="rounded border border-success-subtle bg-success-secondary p-3 text-[11px] text-success-primary">
+                    Funds received via ACH credit to {txn.account}. Reference: ACH-{txn.id}{txn.date.slice(-4)}
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "amazon") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <p className="text-base font-bold text-primary">amazon</p>
+                            <span className="text-base font-bold text-warning-primary">.business</span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Order Summary</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Order #: <span className="font-mono font-semibold text-primary">113-4567890-1234567</span></p>
+                        <p>Order Date: {txn.date}</p>
+                        <p>Account: Numix Inc. (Business)</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-warning-solid pt-4 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-10">
+                        <div>
+                            <p className="font-semibold text-primary">Ship To</p>
+                            <p className="mt-1 text-tertiary">Numix Inc.</p>
+                            <p className="text-tertiary">123 Business Ave, Ste 200</p>
+                            <p className="text-tertiary">San Francisco, CA 94105</p>
+                        </div>
+                        <div>
+                            <p className="font-semibold text-primary">Delivery</p>
+                            <p className="mt-1 text-tertiary">Two-Day Business Shipping</p>
+                            <p className="text-tertiary">Estimated: Mar 6, 2026</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-warning-solid pb-1">
+                        <p className="text-xs font-bold text-primary">ITEMS</p>
+                    </div>
+                    <table className="mt-2 w-full text-[11px]">
+                        <thead>
+                            <tr className="border-b border-secondary text-left">
+                                <th className="pb-1.5 font-semibold text-primary">Item</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Qty</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Price</th>
+                                <th className="pb-1.5 text-right font-semibold text-primary">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-primary">
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">
+                                    <p>Logitech MX Master 3S Mouse</p>
+                                    <p className="text-[10px] text-tertiary">ASIN: B09HM94VDS</p>
+                                </td>
+                                <td className="py-1.5 text-right tabular-nums">2</td>
+                                <td className="py-1.5 text-right tabular-nums">$99.99</td>
+                                <td className="py-1.5 text-right tabular-nums">$199.98</td>
+                            </tr>
+                            <tr className="border-b border-dotted border-tertiary">
+                                <td className="py-1.5">
+                                    <p>Anker 7-in-1 USB-C Hub</p>
+                                    <p className="text-[10px] text-tertiary">ASIN: B08C9HZ8GJ</p>
+                                </td>
+                                <td className="py-1.5 text-right tabular-nums">1</td>
+                                <td className="py-1.5 text-right tabular-nums">$34.69</td>
+                                <td className="py-1.5 text-right tabular-nums">$34.69</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Item Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Shipping & Handling</span>
+                        <span className="tabular-nums text-primary">FREE</span>
+                    </div>
+                    <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                        <span className="text-tertiary">Estimated Tax</span>
+                        <span className="tabular-nums text-primary">$0.00</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Order Total</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Payment</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "uber") {
+        return (
+            <div className="space-y-6 p-8">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-7 items-center justify-center rounded bg-primary-solid px-2">
+                                <span className="text-[11px] font-bold tracking-tight text-white">Uber</span>
+                            </div>
+                            <p className="text-base font-bold text-primary">Trip Receipt</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-quaternary">Thanks for riding with Uber for Business</p>
+                    </div>
+                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                        <p>Trip ID: <span className="font-mono font-semibold text-primary">87a3d2c1-4f29</span></p>
+                        <p>Date: {txn.date} · 7:42 PM</p>
+                        <p>Driver: Marcus T. · ★ 4.92</p>
+                    </div>
+                </div>
+
+                <div className="border-t-2 border-primary-solid pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Trip Details</p>
+                    <div className="mt-2 space-y-2 text-[11px]">
+                        <div className="flex gap-3">
+                            <div className="mt-1 h-2 w-2 rounded-full bg-success-solid" />
+                            <div className="flex-1 border-b border-dotted border-tertiary pb-2">
+                                <p className="text-tertiary">Pickup · 7:42 PM</p>
+                                <p className="font-medium text-primary">123 Business Ave, San Francisco, CA</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <div className="mt-1 h-2 w-2 rounded-sm bg-primary-solid" />
+                            <div className="flex-1 border-b border-dotted border-tertiary pb-2">
+                                <p className="text-tertiary">Drop-off · 8:18 PM</p>
+                                <p className="font-medium text-primary">SoMa Innovation Hub, San Francisco, CA</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-x-6 pt-1">
+                            <div>
+                                <p className="text-tertiary">Vehicle</p>
+                                <p className="font-medium text-primary">UberX · Tesla Model Y</p>
+                            </div>
+                            <div>
+                                <p className="text-tertiary">Distance</p>
+                                <p className="font-medium text-primary">8.2 mi</p>
+                            </div>
+                            <div>
+                                <p className="text-tertiary">Duration</p>
+                                <p className="font-medium text-primary">36 min</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div className="border-b-2 border-primary-solid pb-1">
+                        <p className="text-xs font-bold text-primary">FARE BREAKDOWN</p>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Trip Fare</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt * 0.78)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Tolls</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt * 0.06)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Booking Fee</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt * 0.04)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">SF Congestion Surcharge</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt * 0.04)}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
+                            <span className="text-tertiary">Sales Tax</span>
+                            <span className="tabular-nums text-primary">${fmtMoney(amt * 0.08)}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-secondary pt-1.5">
+                            <span className="font-semibold text-primary">Total Charged</span>
+                            <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Charged to</span>
+                        <span className="font-medium text-primary">{txn.account}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (docType === "restaurant") {
+        const subtotal = amt * 0.78;
+        const tax = amt * 0.07;
+        const tip = amt * 0.15;
+        return (
+            <div className="space-y-6 p-8">
+                <div className="text-center">
+                    <p className="text-base font-bold uppercase tracking-widest text-primary">The Blue Ribbon</p>
+                    <p className="mt-0.5 text-[11px] text-quaternary">680 Mission Street · San Francisco, CA</p>
+                    <p className="text-[11px] text-quaternary">(415) 555-0184</p>
+                </div>
+
+                <div className="border-t border-dashed border-secondary pt-4 text-[11px]">
+                    <div className="flex justify-between">
+                        <span className="text-tertiary">Server: Marco P.</span>
+                        <span className="text-tertiary">Table 12</span>
+                    </div>
+                    <div className="mt-1 flex justify-between">
+                        <span className="text-tertiary">{txn.date} · 7:45 PM</span>
+                        <span className="text-tertiary">Party of 8</span>
+                    </div>
+                    <div className="mt-1 flex justify-between">
+                        <span className="text-tertiary">Check #: 04812</span>
+                        <span className="text-tertiary">Holiday Team Dinner</span>
+                    </div>
+                </div>
+
+                <div className="border-t border-dashed border-secondary pt-4">
+                    <table className="w-full text-[11px]">
+                        <tbody className="text-primary">
+                            <tr><td className="py-1" colSpan={2}><p className="font-semibold uppercase text-tertiary">Starters</p></td></tr>
+                            <tr><td className="py-0.5">4 × Burrata & Heirloom Tomato</td><td className="py-0.5 text-right tabular-nums">$72.00</td></tr>
+                            <tr><td className="py-0.5">2 × Crispy Calamari</td><td className="py-0.5 text-right tabular-nums">$32.00</td></tr>
+                            <tr><td className="pt-3" colSpan={2}><p className="font-semibold uppercase text-tertiary">Entrées</p></td></tr>
+                            <tr><td className="py-0.5">3 × Dry-aged Ribeye, 14oz</td><td className="py-0.5 text-right tabular-nums">$219.00</td></tr>
+                            <tr><td className="py-0.5">3 × Pan-roasted Halibut</td><td className="py-0.5 text-right tabular-nums">$132.00</td></tr>
+                            <tr><td className="py-0.5">2 × Truffle Mushroom Risotto</td><td className="py-0.5 text-right tabular-nums">$68.00</td></tr>
+                            <tr><td className="pt-3" colSpan={2}><p className="font-semibold uppercase text-tertiary">Beverages</p></td></tr>
+                            <tr><td className="py-0.5">3 × Cabernet Sauvignon, btl</td><td className="py-0.5 text-right tabular-nums">$285.00</td></tr>
+                            <tr><td className="py-0.5">8 × Sparkling Water</td><td className="py-0.5 text-right tabular-nums">$24.00</td></tr>
+                            <tr><td className="pt-3" colSpan={2}><p className="font-semibold uppercase text-tertiary">Desserts</p></td></tr>
+                            <tr><td className="py-0.5">4 × Crème Brûlée</td><td className="py-0.5 text-right tabular-nums">$48.00</td></tr>
+                            <tr><td className="py-0.5">2 × Chocolate Soufflé</td><td className="py-0.5 text-right tabular-nums">$36.00</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="border-t border-dashed border-secondary pt-3 space-y-1 text-[11px]">
+                    <div className="flex justify-between">
+                        <span className="text-tertiary">Subtotal</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-tertiary">SF Tax (8.625%)</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(tax)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-tertiary">Gratuity (18% · auto · party 6+)</span>
+                        <span className="tabular-nums text-primary">${fmtMoney(tip)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-secondary pt-1.5">
+                        <span className="font-semibold text-primary">Total</span>
+                        <span className="font-semibold tabular-nums text-primary">${fmtMoney(amt)}</span>
+                    </div>
+                </div>
+
+                <div className="rounded border border-secondary bg-secondary p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-tertiary">Paid · {txn.account}</span>
+                        <span className="font-medium text-primary">Approved</span>
+                    </div>
+                </div>
+
+                <p className="text-center text-[10px] uppercase tracking-widest text-quaternary">— Thank you —</p>
+            </div>
+        );
+    }
+
+    // Generic credit card statement (fallback for any unmapped transaction)
+    return (
+        <div className="space-y-6 p-8">
+            <div className="flex items-start justify-between">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <Bank className="size-5 text-fg-primary" />
+                        <p className="text-base font-bold text-primary">{txn.account}</p>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-quaternary">A Division of First Citizens Bank</p>
+                </div>
+                <div className="text-right text-[11px] leading-relaxed text-tertiary">
+                    <p>P.O. Box 2360</p>
+                    <p>Omaha NE 68103</p>
+                </div>
+            </div>
+
+            <div className="flex items-start justify-between border-t-2 border-brand-solid pt-4">
+                <div>
+                    <p className="text-xs font-semibold text-primary">Return Service Requested</p>
+                    <div className="mt-1.5 text-[11px] leading-relaxed text-tertiary">
+                        <p className="font-medium text-primary">{txn.description}</p>
+                        <p>123 BUSINESS AVE</p>
+                        <p>SAN FRANCISCO CA 94105</p>
+                    </div>
+                </div>
+                <div className="text-right">
+                    <p className="text-sm font-bold text-primary">Monthly Statement</p>
+                    <p className="mt-0.5 text-[11px] text-tertiary">Statement Period: {txn.date}</p>
+                    <div className="mt-3 space-y-1 text-[11px]">
+                        <div className="flex justify-between gap-8">
+                            <span className="text-tertiary">Account Number:</span>
+                            <span className="font-medium text-primary">Ending in 7800</span>
+                        </div>
+                        <div className="flex justify-between gap-8">
+                            <span className="text-tertiary">New Balance:</span>
+                            <span className="font-medium text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                        <div className="flex justify-between gap-8">
+                            <span className="text-tertiary">Payment Due Date:</span>
+                            <span className="font-medium text-primary">05-26-25</span>
+                        </div>
+                        <div className="flex justify-between gap-8">
+                            <span className="text-tertiary">Payment Amount:</span>
+                            <span className="font-medium text-primary">${fmtMoney(amt)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div className="border-b-2 border-brand-solid pb-1">
+                    <p className="text-xs font-bold text-primary">TRANSACTIONS</p>
+                </div>
+                <table className="mt-2 w-full text-[11px]">
+                    <thead>
+                        <tr className="border-b border-secondary">
+                            <th className="pb-1.5 text-left font-semibold text-primary">Date</th>
+                            <th className="pb-1.5 text-left font-semibold text-primary">Description</th>
+                            <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr className="border-b border-dotted border-tertiary">
+                            <td className="py-2 align-top text-tertiary">{txn.date}</td>
+                            <td className="py-2 pr-4 text-primary">
+                                {txn.description}
+                                <br />
+                                <span className="text-[10px] text-tertiary">MCC: 4121 &nbsp; MERCHANT ZIP: 94105</span>
+                            </td>
+                            <td className="py-2 text-right tabular-nums text-primary">${fmtMoney(amt)}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan={2} className="pt-2.5 text-right text-[10px] font-semibold uppercase text-primary">Total for account ending in 7800</td>
+                            <td className="pt-2.5 text-right text-[11px] font-semibold tabular-nums text-primary">${fmtMoney(amt)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
 function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxnIds }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string, isAdding: boolean) => void; linkedRdTxnIds?: Set<string>; unlinkedRdTxnIds?: Set<string> } = {}) {
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
+    const [qbFilter, setQbFilter] = useState<"all" | QbStatus>("all");
     // Demo: every full URL reload starts from the canonical seed data. The
     // localStorage persistence used to live here; it's removed so refreshing
     // resets all label edits. In-app navigation still preserves R&D labels
@@ -438,6 +1678,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
             if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
             if (coaFilter !== "all" && t.coaCode !== coaFilter) return false;
             if (accountFilter !== "all" && t.account !== accountFilter) return false;
+            if (qbFilter !== "all" && getQbStatus(t) !== qbFilter) return false;
             return true;
         })
         .sort((a, b) => {
@@ -576,6 +1817,54 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                         </button>
                     </div>
 
+                    {/* QuickBooks reconciliation status tabs. Sub-filter under the
+                        bank tabs — counts derive from whichever bank account is
+                        currently selected, so users can scope by source and then
+                        slice by sync state. */}
+                    <div className="flex items-center gap-1.5 border-b border-secondary px-2 py-2">
+                        {(() => {
+                            const scopedTxns = accountFilter === "all" ? monthTxns : monthTxns.filter((t) => t.account === accountFilter);
+                            const counts = {
+                                all: scopedTxns.length,
+                                "needs-sync": scopedTxns.filter((t) => getQbStatus(t) === "needs-sync").length,
+                                "unmatched": scopedTxns.filter((t) => getQbStatus(t) === "unmatched").length,
+                                "matched": scopedTxns.filter((t) => getQbStatus(t) === "matched").length,
+                            };
+                            const tabs: Array<{ id: "all" | QbStatus; label: string; Icon: typeof CheckCircle | null; iconClass: string }> = [
+                                { id: "all", label: "All", Icon: null, iconClass: "" },
+                                { id: "needs-sync", label: "Needs Sync", Icon: Clock, iconClass: "text-fg-warning-primary" },
+                                { id: "unmatched", label: "Unmatched", Icon: AlertCircle, iconClass: "text-fg-error-primary" },
+                                { id: "matched", label: "Matched", Icon: CheckCircle, iconClass: "text-fg-success-primary" },
+                            ];
+                            return (
+                                <>
+                                    {tabs.map((tab) => {
+                                        const isActive = qbFilter === tab.id;
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => setQbFilter(tab.id)}
+                                                className={cx(
+                                                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition duration-100 ease-linear",
+                                                    isActive ? "bg-secondary text-primary" : "text-tertiary hover:bg-secondary hover:text-primary",
+                                                )}
+                                            >
+                                                {tab.Icon && <tab.Icon className={cx("size-3.5", tab.iconClass)} />}
+                                                <span>{tab.label}</span>
+                                                <span className={cx("rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums", isActive ? "bg-primary text-secondary" : "bg-secondary text-tertiary")}>{counts[tab.id]}</span>
+                                            </button>
+                                        );
+                                    })}
+                                    <div className="ml-auto flex items-center gap-1.5 pr-1 text-[10px] text-quaternary">
+                                        <span className="inline-block size-1.5 rounded-full bg-success-solid" aria-hidden />
+                                        <span>QuickBooks · synced 2 min ago</span>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+
                     {/* Filters row */}
                     <div className="flex items-center gap-2 border-b border-secondary px-4 py-2.5">
                         {selectedAccount && (
@@ -639,6 +1928,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
                                 <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
                                 {accountFilter === "all" && <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>}
+                                <th className="w-[130px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">QuickBooks</th>
                                 <th className="w-10 px-4 py-2.5" />
                             </tr>
                         </thead>
@@ -731,6 +2021,27 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                             </div>
                                         </td>
                                         {accountFilter === "all" && <td className="whitespace-nowrap px-4 py-3 text-primary">{txn.account}</td>}
+                                        <td className="whitespace-nowrap px-4 py-3">
+                                            {(() => {
+                                                const status = getQbStatus(txn);
+                                                const config = {
+                                                    "matched": { Icon: CheckCircle, label: "Synced", color: "text-fg-success-primary", bg: "bg-success-secondary" },
+                                                    "unmatched": { Icon: AlertCircle, label: "Unmatched", color: "text-fg-error-primary", bg: "bg-error-secondary" },
+                                                    "needs-sync": { Icon: Clock, label: "Needs Sync", color: "text-fg-warning-primary", bg: "bg-warning-secondary" },
+                                                }[status];
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); setQbFilter(status); }}
+                                                        className={cx("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition hover:opacity-80", config.bg, config.color)}
+                                                        title={`Filter to ${config.label}`}
+                                                    >
+                                                        <config.Icon className="size-3.5" />
+                                                        <span>{config.label}</span>
+                                                    </button>
+                                                );
+                                            })()}
+                                        </td>
                                         <td className="relative px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
@@ -1133,145 +2444,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                     {/* Document area */}
                                     <div className="flex flex-1 items-start justify-center overflow-auto p-6">
                                         <div className="w-full origin-top rounded-lg bg-primary shadow-lg ring-1 ring-secondary transition-transform duration-150" style={{ transform: `scale(${docZoom / 100})` }}>
-                                            {/* Bank statement style document */}
-                                            <div className="space-y-6 p-8">
-                                                {/* Bank header */}
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Bank className="size-5 text-fg-primary" />
-                                                            <p className="text-base font-bold text-primary">{selectedTxn.account}</p>
-                                                        </div>
-                                                        <p className="mt-0.5 text-[11px] text-quaternary">A Division of First Citizens Bank</p>
-                                                    </div>
-                                                    <div className="text-right text-[11px] leading-relaxed text-tertiary">
-                                                        <p>P.O. Box 2360</p>
-                                                        <p>Omaha NE 68103</p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Statement title row */}
-                                                <div className="flex items-start justify-between border-t-2 border-brand-solid pt-4">
-                                                    <div>
-                                                        <p className="text-xs font-semibold text-primary">Return Service Requested</p>
-                                                        <div className="mt-1.5 text-[11px] leading-relaxed text-tertiary">
-                                                            <p className="font-medium text-primary">{selectedTxn.description}</p>
-                                                            <p>123 BUSINESS AVE</p>
-                                                            <p>SAN FRANCISCO CA 94105</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-sm font-bold text-primary">Monthly Statement</p>
-                                                        <p className="mt-0.5 text-[11px] text-tertiary">Statement Period: {selectedTxn.date}</p>
-                                                        <div className="mt-3 space-y-1 text-[11px]">
-                                                            <div className="flex justify-between gap-8">
-                                                                <span className="text-tertiary">Account Number:</span>
-                                                                <span className="font-medium text-primary">Ending in 7800</span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-8">
-                                                                <span className="text-tertiary">New Balance:</span>
-                                                                <span className="font-medium text-primary">${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-8">
-                                                                <span className="text-tertiary">Payment Due Date:</span>
-                                                                <span className="font-medium text-primary">05-26-25</span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-8">
-                                                                <span className="text-tertiary">Payment Amount:</span>
-                                                                <span className="font-medium text-primary">${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Account Summary */}
-                                                <div>
-                                                    <div className="border-b-2 border-brand-solid pb-1">
-                                                        <p className="text-xs font-bold text-primary">ACCOUNT SUMMARY</p>
-                                                    </div>
-                                                    <div className="mt-3 grid grid-cols-2 gap-x-10 gap-y-1 text-[11px]">
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Previous Balance</span>
-                                                            <span className="tabular-nums text-primary">$5,124.33</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Statement Closing Date</span>
-                                                            <span className="tabular-nums text-primary">04-30-25</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Payments</span>
-                                                            <span className="tabular-nums text-primary">-$5,124.33</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Credit Limit</span>
-                                                            <span className="tabular-nums text-primary">$100,000.00</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Credits</span>
-                                                            <span className="tabular-nums text-primary">-$0.00</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Available Credit</span>
-                                                            <span className="tabular-nums text-primary">$85,884.00</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Purchases and Other Charges</span>
-                                                            <span className="tabular-nums text-primary">+${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Days in billing cycle</span>
-                                                            <span className="tabular-nums text-primary">30</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Cash Advances</span>
-                                                            <span className="tabular-nums text-primary">+$0.00</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-b border-dotted border-tertiary pb-1">
-                                                            <span className="text-tertiary">Payment Due Date</span>
-                                                            <span className="tabular-nums text-primary">05-26-25</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-t border-secondary pt-1">
-                                                            <span className="font-semibold text-primary">New Balance</span>
-                                                            <span className="font-semibold tabular-nums text-primary">=${Math.abs(selectedTxn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                                        </div>
-                                                        <div className="flex justify-between border-t border-secondary pt-1">
-                                                            <span className="text-tertiary">Past Due</span>
-                                                            <span className="tabular-nums text-primary">$0.00</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Transactions */}
-                                                <div>
-                                                    <div className="border-b-2 border-brand-solid pb-1">
-                                                        <p className="text-xs font-bold text-primary">TRANSACTIONS</p>
-                                                    </div>
-                                                    <table className="mt-2 w-full text-[11px]">
-                                                        <thead>
-                                                            <tr className="border-b border-secondary">
-                                                                <th className="pb-1.5 text-left font-semibold text-primary">Date</th>
-                                                                <th className="pb-1.5 text-left font-semibold text-primary">Description</th>
-                                                                <th className="pb-1.5 text-right font-semibold text-primary">Amount</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr className="border-b border-dotted border-tertiary">
-                                                                <td className="py-2 align-top text-tertiary">{selectedTxn.date}</td>
-                                                                <td className="py-2 pr-4 text-primary">
-                                                                    {selectedTxn.description}
-                                                                    <br />
-                                                                    <span className="text-[10px] text-tertiary">MCC: 4121 &nbsp; MERCHANT ZIP: 94105</span>
-                                                                </td>
-                                                                <td className="py-2 text-right tabular-nums text-primary">${Math.abs(selectedTxn.amount).toFixed(2)}</td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td colSpan={2} className="pt-2.5 text-right text-[10px] font-semibold uppercase text-primary">Total for account ending in 7800</td>
-                                                                <td className="pt-2.5 text-right text-[11px] font-semibold tabular-nums text-primary">${Math.abs(selectedTxn.amount).toFixed(2)}</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
+                                            <TransactionDocument txn={selectedTxn} />
                                         </div>
                                     </div>
                                 </div>
