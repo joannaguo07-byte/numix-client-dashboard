@@ -322,6 +322,25 @@ function getReviewContext(txn: { confidence: number; labels: string[]; coaCode: 
     return { reasons, confirmItems };
 }
 
+// Demo: the AI's R&D §41 suggestion model. Returns a confidence + estimated
+// federal credit value for transactions the model thinks *might* qualify for
+// R&D but that don't yet carry the "rd" label. Hardcoded so the demo always
+// has the same surfaces; production would derive this from the model output.
+const RD_SUGGESTION_CONFIDENCE: Record<string, number> = {
+    "1": 72,   // Stripe Payment — demo target for the home-tour flow
+    "8": 68,   // Amazon Business Office Supplies — could be R&D supplies
+    "26": 78,  // Uber Team Transportation — could be R&D-related travel
+};
+
+function getRdSuggestion(txn: { id: string; labels: string[]; amount: number }): { confidence: number; estimatedCredit: number } | null {
+    if (txn.labels.includes("rd")) return null; // already labelled
+    const confidence = RD_SUGGESTION_CONFIDENCE[txn.id];
+    if (!confidence) return null;
+    // Federal R&D credit is roughly 14% of qualified research expenses.
+    const estimatedCredit = Math.round(Math.abs(txn.amount) * 0.14);
+    return { confidence, estimatedCredit };
+}
+
 // ─── Transactions Page ──────────────────────────────────────────────────────
 
 function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxnIds }: { onNavigate?: (panel: string, opts?: NavOpts) => void; onRdLabel?: (txnId: string, description: string, isAdding: boolean) => void; linkedRdTxnIds?: Set<string>; unlinkedRdTxnIds?: Set<string> } = {}) {
@@ -373,6 +392,17 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
     const [slideoutLabelOpen, setSlideoutLabelOpen] = useState(false);
     const [docZoom, setDocZoom] = useState(100);
     const [rdLabelInfo, setRdLabelInfo] = useState<{ description: string } | null>(null);
+    // Indexes of "What to confirm" checklist items the user has ticked for
+    // the currently-open transaction. Resets when a different txn opens.
+    const [confirmedIdxs, setConfirmedIdxs] = useState<Set<number>>(() => new Set());
+    // Whether the user ticked the special "this counts toward R&D" checklist
+    // row. Tracked separately because it also adds the rd label as a side
+    // effect, distinct from the generic approval-confirmation items.
+    const [rdRowChecked, setRdRowChecked] = useState(false);
+    useEffect(() => {
+        setConfirmedIdxs(new Set());
+        setRdRowChecked(false);
+    }, [selectedTxnId]);
 
     const monthTxns = transactions.filter((t) => t.month === monthFilter);
     const totalTxns = monthTxns.length;
@@ -759,6 +789,14 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                         if (!selectedTxn) return null;
                         const coa = CHART_OF_ACCOUNTS.find((a) => a.code === selectedTxn.coaCode);
                         const needsReview = selectedTxn.confidence < 90;
+                        // Compute review context once at the top so the body and footer
+                        // both see the same checklist count for the Approve gate.
+                        const reviewContext = needsReview ? getReviewContext(selectedTxn) : null;
+                        const rdSuggestion = getRdSuggestion(selectedTxn);
+                        const showRdRow = needsReview && rdSuggestion !== null;
+                        const allConfirmed =
+                            (!reviewContext || confirmedIdxs.size === reviewContext.confirmItems.length) &&
+                            (!showRdRow || rdRowChecked);
                         return (
                             <div className="flex size-full">
                                 {/* Left panel – Transaction Details */}
@@ -897,42 +935,139 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                 </div>
                                             </div>
 
+                                            {/* AI R&D suggestion callout — appears whenever the AI's
+                                                R&D model has moderate confidence and the txn isn't yet
+                                                tagged "rd". One-click tagging adds the rd label
+                                                everywhere (Bookkeeping, Tax Planning, Ask My Accountant). */}
+                                            {rdSuggestion && (
+                                                <div className="rounded-xl border border-brand bg-brand-secondary p-4">
+                                                    <div className="flex items-start gap-3">
+                                                        <Stars01 className="mt-0.5 size-5 shrink-0 text-fg-brand-primary" aria-hidden />
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-semibold text-primary">AI thinks this might qualify for R&D §41</p>
+                                                            <p className="mt-0.5 text-xs leading-relaxed text-tertiary">
+                                                                AI confidence: <span className="font-medium text-secondary">{rdSuggestion.confidence}%</span>. Tagging this could add about <span className="font-semibold text-primary">${rdSuggestion.estimatedCredit.toLocaleString()}</span> to your potential federal R&D tax credit.
+                                                            </p>
+                                                            <Button
+                                                                color="primary"
+                                                                size="sm"
+                                                                iconLeading={Stars01}
+                                                                className="mt-3"
+                                                                onClick={() => toggleLabel(selectedTxn.id, "rd")}
+                                                            >
+                                                                Tag as R&D §41
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Why flagged + what to confirm — only when needsReview. */}
                                             {/* These two sections do the heavy lifting: turn a vague */}
                                             {/* "Needs Review" badge into a specific question the user */}
                                             {/* can actually answer with judgment instead of rubber-stamping. */}
-                                            {needsReview && (() => {
-                                                const { reasons, confirmItems } = getReviewContext(selectedTxn);
-                                                return (
-                                                    <>
-                                                        <div className="space-y-2">
-                                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Why flagged</h3>
-                                                            <div className="rounded-xl border border-warning-300 bg-warning-secondary/40 p-3">
-                                                                <ul className="space-y-2">
-                                                                    {reasons.map((r, i) => (
-                                                                        <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary">
-                                                                            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-fg-warning-primary" />
-                                                                            <span>{r}</span>
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-2">
-                                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">What to confirm</h3>
-                                                            <ul className="space-y-2 rounded-xl border border-secondary bg-primary p-3">
-                                                                {confirmItems.map((item, i) => (
+                                            {needsReview && reviewContext && (
+                                                <>
+                                                    <div className="space-y-2">
+                                                        <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Why flagged</h3>
+                                                        <div className="rounded-xl border border-warning-300 bg-warning-secondary/40 p-3">
+                                                            <ul className="space-y-2">
+                                                                {reviewContext.reasons.map((r, i) => (
                                                                     <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary">
-                                                                        <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded border border-tertiary" />
-                                                                        <span>{item}</span>
+                                                                        <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-fg-warning-primary" />
+                                                                        <span>{r}</span>
                                                                     </li>
                                                                 ))}
                                                             </ul>
                                                         </div>
-                                                    </>
-                                                );
-                                            })()}
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">What to confirm</h3>
+                                                            <span className="text-xs font-medium text-tertiary tabular-nums">
+                                                                {confirmedIdxs.size + (showRdRow && rdRowChecked ? 1 : 0)}/{reviewContext.confirmItems.length + (showRdRow ? 1 : 0)}
+                                                            </span>
+                                                        </div>
+                                                        <ul className="space-y-2 rounded-xl border border-secondary bg-primary p-3">
+                                                            {/* Special R&D row — checking this also adds the rd label,
+                                                                so the user confirms approval AND tags as R&D in one click. */}
+                                                            {showRdRow && rdSuggestion && (
+                                                                <li>
+                                                                    <label className="flex cursor-pointer items-start gap-2 rounded-md bg-brand-secondary/40 px-2 py-1.5 text-xs leading-relaxed text-secondary">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={rdRowChecked}
+                                                                            onChange={() => {
+                                                                                const next = !rdRowChecked;
+                                                                                setRdRowChecked(next);
+                                                                                // Side effect: toggle the rd label so the row's
+                                                                                // state stays in sync with the actual labelling.
+                                                                                const hasRd = selectedTxn.labels.includes("rd");
+                                                                                if (next !== hasRd) {
+                                                                                    toggleLabel(selectedTxn.id, "rd");
+                                                                                }
+                                                                            }}
+                                                                            className="sr-only"
+                                                                        />
+                                                                        <span
+                                                                            className={cx(
+                                                                                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
+                                                                                rdRowChecked
+                                                                                    ? "border-brand bg-brand-solid text-white"
+                                                                                    : "border-primary bg-primary",
+                                                                            )}
+                                                                            aria-hidden
+                                                                        >
+                                                                            {rdRowChecked && <Check className="size-3" />}
+                                                                        </span>
+                                                                        <span className="flex items-center gap-1.5">
+                                                                            <Stars01 className="size-3.5 shrink-0 text-fg-brand-primary" aria-hidden />
+                                                                            <span className={cx(rdRowChecked && "text-primary")}>
+                                                                                This expense should count toward your R&D §41 credit
+                                                                                <span className="ml-1 font-semibold text-brand-secondary">(+${rdSuggestion.estimatedCredit.toLocaleString()})</span>
+                                                                            </span>
+                                                                        </span>
+                                                                    </label>
+                                                                </li>
+                                                            )}
+                                                            {reviewContext.confirmItems.map((item, i) => {
+                                                                const isChecked = confirmedIdxs.has(i);
+                                                                return (
+                                                                    <li key={i}>
+                                                                        <label className="flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-secondary">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={isChecked}
+                                                                                onChange={() => {
+                                                                                    setConfirmedIdxs((prev) => {
+                                                                                        const next = new Set(prev);
+                                                                                        if (next.has(i)) next.delete(i); else next.add(i);
+                                                                                        return next;
+                                                                                    });
+                                                                                }}
+                                                                                className="sr-only"
+                                                                            />
+                                                                            <span
+                                                                                className={cx(
+                                                                                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
+                                                                                    isChecked
+                                                                                        ? "border-brand bg-brand-solid text-white"
+                                                                                        : "border-primary bg-primary",
+                                                                                )}
+                                                                                aria-hidden
+                                                                            >
+                                                                                {isChecked && <Check className="size-3" />}
+                                                                            </span>
+                                                                            <span className={cx(isChecked && "text-primary")}>{item}</span>
+                                                                        </label>
+                                                                    </li>
+                                                                );
+                                                            })}
+                                                        </ul>
+                                                    </div>
+                                                </>
+                                            )}
 
                                             {/* AI's recommendation */}
                                             <div className="space-y-2">
@@ -951,8 +1086,19 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                     </div>
 
                                     {/* Footer */}
-                                    <footer className="w-full p-4 shadow-[inset_0px_1px_0px_0px] shadow-border-secondary md:px-6">
-                                        <Button color="primary" size="sm" iconLeading={CheckCircle} className="w-full">
+                                    <footer className="w-full space-y-2 p-4 shadow-[inset_0px_1px_0px_0px] shadow-border-secondary md:px-6">
+                                        {needsReview && !allConfirmed && (
+                                            <p className="text-center text-xs text-tertiary">
+                                                Check all {(reviewContext?.confirmItems.length ?? 0) + (showRdRow ? 1 : 0)} items above to enable approval.
+                                            </p>
+                                        )}
+                                        <Button
+                                            color="primary"
+                                            size="sm"
+                                            iconLeading={CheckCircle}
+                                            className="w-full"
+                                            isDisabled={needsReview && !allConfirmed}
+                                        >
                                             {needsReview ? "Approve Transaction" : "Verified"}
                                         </Button>
                                     </footer>

@@ -250,6 +250,7 @@ export interface RdLabelActivityEntry {
     id: string;
     txnId: string;
     description: string;
+    action: "added" | "removed";
     time: string;
 }
 
@@ -264,13 +265,15 @@ export function NewAskPanel({
     initialPrompt?: string;
     rdLabelActivity?: RdLabelActivityEntry[];
 }) {
-    // Surface R&D label events from Bookkeeping as system context at the
-    // top of the chat. This lets the Numix CPA team see what the user
-    // recently flagged without the user having to repeat it.
+    // Surface R&D label events from Bookkeeping/Tax Planning as system
+    // context at the top of the chat. This lets the Numix CPA team see
+    // what the user recently flagged or unflagged without repeating it.
     const seedMessages: Message[] = (rdLabelActivity ?? []).map((a) => ({
         id: `seed-${a.id}`,
         sender: "system" as Sender,
-        text: `R&D §41 label added to "${a.description}". Item now appears in your R&D Incentive table.`,
+        text: a.action === "added"
+            ? `R&D §41 label added to "${a.description}". Item now appears in your R&D Incentive table.`
+            : `R&D §41 label removed from "${a.description}". Item no longer counts toward your R&D credit.`,
         time: a.time,
     }));
     const { messages, input, setInput, isLoading, bottomRef, inputRef, sendMessage, handleKeyDown } = useChat(seedMessages);

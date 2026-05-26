@@ -78,10 +78,15 @@ interface TaxScreenProps {
     page?: TaxPage;
     intent?: TaxPlanningIntent;
     clearIntent?: () => void;
-    // Transaction ids that the user has labelled R&D §41 in Bookkeeping.
-    // These are mirrored into the R&D Incentive table so the credit
-    // calculation includes them automatically.
+    // Cross-page R&D label state. linkedRdTxnIds = ids the user has marked
+    // R&D §41 in Bookkeeping (forced to qualified here); unlinkedRdTxnIds =
+    // ids the user has explicitly removed (forced to not-qualified here).
     linkedRdTxnIds?: Set<string>;
+    unlinkedRdTxnIds?: Set<string>;
+    // Fires when the user toggles the R&D §41 label in the Tax Planning
+    // R&D Incentive table. Same shape as the Bookkeeping callback so the
+    // host can keep both views in sync.
+    onRdLabelChange?: (txnId: string, description: string, isAdding: boolean) => void;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -1009,7 +1014,7 @@ const RD_EXPENSES = [
 
 const TOTAL_EXPENSE_ITEMS = RD_EXPENSES.reduce((sum, g) => sum + g.items.length, 0);
 
-function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: TaxPlanningIntent; clearIntent?: () => void; linkedRdTxnIds?: Set<string> } = {}) {
+function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds, unlinkedRdTxnIds, onRdLabelChange }: { intent?: TaxPlanningIntent; clearIntent?: () => void; linkedRdTxnIds?: Set<string>; unlinkedRdTxnIds?: Set<string>; onRdLabelChange?: (txnId: string, description: string, isAdding: boolean) => void } = {}) {
     const [selectedCredit, setSelectedCredit] = useState<string | null>(intent?.credit ?? null);
     const [activeTab, setActiveTab] = useState<"expenses" | "credits">(intent?.tab ?? "expenses");
     useEffect(() => {
@@ -1029,24 +1034,33 @@ function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: Tax
     const [rdContractors, setRdContractors] = useState(RD_CONTRACTORS.map((c) => ({ ...c })));
     const [rdExpenses, setRdExpenses] = useState(RD_EXPENSE_ITEMS.map((e) => ({ ...e })));
 
-    // When the user labels a transaction "R&D §41" in Bookkeeping, the host
-    // forwards its id here. Mirror that into the matching rdExpenses entry so
-    // the R&D Incentive table reflects the same qualified status without the
-    // user having to re-label inside Tax Planning.
+    // Mirror cross-page R&D label state. Linked ids gain the "rd" label and
+    // qualified status; unlinked ids lose them. This keeps the R&D Incentive
+    // table in sync with whatever the user did in Bookkeeping.
     useEffect(() => {
-        if (!linkedRdTxnIds || linkedRdTxnIds.size === 0) return;
+        const linked = linkedRdTxnIds ?? new Set<string>();
+        const unlinked = unlinkedRdTxnIds ?? new Set<string>();
+        if (linked.size === 0 && unlinked.size === 0) return;
         setRdExpenses((prev) =>
-            prev.map((e) =>
-                linkedRdTxnIds.has(e.id)
-                    ? {
-                          ...e,
-                          labels: e.labels.includes("rd") ? e.labels : [...e.labels, "rd"],
-                          rdStatus: e.rdStatus === "qualified" ? e.rdStatus : ("qualified" as RdExpenseStatus),
-                      }
-                    : e,
-            ),
+            prev.map((e) => {
+                if (linked.has(e.id)) {
+                    return {
+                        ...e,
+                        labels: e.labels.includes("rd") ? e.labels : [...e.labels, "rd"],
+                        rdStatus: e.rdStatus === "qualified" ? e.rdStatus : ("qualified" as RdExpenseStatus),
+                    };
+                }
+                if (unlinked.has(e.id)) {
+                    return {
+                        ...e,
+                        labels: e.labels.filter((l) => l !== "rd"),
+                        rdStatus: "not-qualified" as RdExpenseStatus,
+                    };
+                }
+                return e;
+            }),
         );
-    }, [linkedRdTxnIds]);
+    }, [linkedRdTxnIds, unlinkedRdTxnIds]);
 
     const [rdLabelFilter, setRdLabelFilter] = useState("all");
     const [rdStatusFilter, setRdStatusFilter] = useState("all");
@@ -1060,6 +1074,8 @@ function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: Tax
     const [openLabelDropdown, setOpenLabelDropdown] = useState<string | null>(null);
 
     function toggleRdLabel(expenseId: string, labelId: string) {
+        const expense = rdExpenses.find((e) => e.id === expenseId);
+        const isAdding = expense ? !expense.labels.includes(labelId) : false;
         setRdExpenses((prev) =>
             prev.map((e) =>
                 e.id === expenseId
@@ -1067,6 +1083,11 @@ function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: Tax
                     : e,
             ),
         );
+        if (labelId === "rd" && expense) {
+            // Notify the host so Bookkeeping mirrors the toggle and the
+            // Ask My Accountant chat history logs the change.
+            onRdLabelChange?.(expenseId, expense.description, isAdding);
+        }
     }
 
     const [strategyPage, setStrategyPage] = useState(0);
@@ -1912,7 +1933,30 @@ function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: Tax
                                                                                         key={key}
                                                                                         type="button"
                                                                                         onClick={() => {
-                                                                                            setRdExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, rdStatus: key } : e)));
+                                                                                            const wasQualified = item.rdStatus === "qualified";
+                                                                                            const willBeQualified = key === "qualified";
+                                                                                            setRdExpenses((prev) =>
+                                                                                                prev.map((e) =>
+                                                                                                    e.id === item.id
+                                                                                                        ? {
+                                                                                                              ...e,
+                                                                                                              rdStatus: key,
+                                                                                                              // Keep the rd label in lock-step with qualified
+                                                                                                              // status so both surfaces show the same thing.
+                                                                                                              labels: willBeQualified
+                                                                                                                  ? (e.labels.includes("rd") ? e.labels : [...e.labels, "rd"])
+                                                                                                                  : e.labels.filter((l) => l !== "rd"),
+                                                                                                          }
+                                                                                                        : e,
+                                                                                                ),
+                                                                                            );
+                                                                                            // Notify host on transitions across the qualified boundary
+                                                                                            // so Bookkeeping + Ask My Accountant stay in sync.
+                                                                                            if (wasQualified && !willBeQualified) {
+                                                                                                onRdLabelChange?.(item.id, item.description, false);
+                                                                                            } else if (!wasQualified && willBeQualified) {
+                                                                                                onRdLabelChange?.(item.id, item.description, true);
+                                                                                            }
                                                                                             setOpenStatusDropdown(null);
                                                                                         }}
                                                                                         className={cx(
@@ -2394,7 +2438,7 @@ function TaxPlanningPage({ intent, clearIntent, linkedRdTxnIds }: { intent?: Tax
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function TaxScreen({ page = "filing", intent, clearIntent, linkedRdTxnIds }: TaxScreenProps) {
+export function TaxScreen({ page = "filing", intent, clearIntent, linkedRdTxnIds, unlinkedRdTxnIds, onRdLabelChange }: TaxScreenProps) {
     const [selectedYear, setSelectedYear] = useState("2024");
     const [filingWizardOpen, setFilingWizardOpen] = useState(false);
 
@@ -2436,7 +2480,7 @@ export function TaxScreen({ page = "filing", intent, clearIntent, linkedRdTxnIds
             {/* ── Page content ─────────────────────────────────────────── */}
             <div className="min-h-0 flex-1 overflow-y-auto px-10 pb-8">
                 {page === "filing" && <TaxFilingPage onOpenWizard={() => setFilingWizardOpen(true)} />}
-                {page === "planning" && <TaxPlanningPage intent={intent} clearIntent={clearIntent} linkedRdTxnIds={linkedRdTxnIds} />}
+                {page === "planning" && <TaxPlanningPage intent={intent} clearIntent={clearIntent} linkedRdTxnIds={linkedRdTxnIds} unlinkedRdTxnIds={unlinkedRdTxnIds} onRdLabelChange={onRdLabelChange} />}
             </div>
 
             {/* ── Filing wizard overlay ────────────────────────────────── */}
