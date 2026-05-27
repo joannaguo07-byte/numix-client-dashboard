@@ -149,7 +149,10 @@ const CONFIDENCE_OPTIONS = [
 
 type QbStatus = "matched" | "unmatched" | "needs-sync";
 
-function getQbStatus(t: { confidence: number; id: string }): QbStatus {
+function getQbStatus(t: { confidence: number; id: string; approved?: boolean }): QbStatus {
+    // Once the user has explicitly approved a transaction it counts as
+    // reconciled to QB regardless of confidence or id-based seeding.
+    if (t.approved) return "matched";
     if (t.confidence < 90) return "needs-sync";
     if (parseInt(t.id, 10) % 4 === 0) return "unmatched";
     return "matched";
@@ -1702,6 +1705,11 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
     // row. Tracked separately because it also adds the rd label as a side
     // effect, distinct from the generic approval-confirmation items.
     const [rdRowChecked, setRdRowChecked] = useState(false);
+    // Documents uploaded against a transaction's "supporting documentation"
+    // checklist item, keyed by txn id. Stays in memory only — the demo
+    // doesn't persist uploads. Presence of any file auto-ticks the related
+    // checkbox so the user doesn't have to confirm twice.
+    const [uploadedDocs, setUploadedDocs] = useState<Record<string, { name: string; size: number }[]>>({});
     useEffect(() => {
         setConfirmedIdxs(new Set());
         setRdRowChecked(false);
@@ -1993,7 +2001,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                     </div>
 
                     {/* Filters row */}
-                    <div className="flex items-center gap-2 border-b border-secondary px-4 py-2.5">
+                    <div className="flex items-center gap-2 border-b border-secondary p-2">
                         {selectedAccount && (
                             <span className={cx("text-sm font-semibold tabular-nums", selectedAccount.balance < 0 ? "text-error-primary" : "text-success-primary")}>
                                 {selectedAccount.balance < 0 ? "-" : ""}${Math.abs(selectedAccount.balance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -2051,7 +2059,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                     </button>
                                 </th>
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Description</th>
-                                <th className="w-[110px] whitespace-nowrap px-4 py-2.5 text-right font-medium text-secondary">Amount</th>
+                                <th className="w-[110px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Amount</th>
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
                                 <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
                                 {accountFilter === "all" && <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>}
@@ -2093,7 +2101,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className={cx("whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums", txn.amount > 0 ? "text-success-primary" : "text-primary")}>
+                                        <td className={cx("whitespace-nowrap px-4 py-3 text-left font-medium tabular-nums", txn.amount > 0 ? "text-success-primary" : "text-primary")}>
                                             {txn.amount > 0 ? "+" : ""}${Math.abs(txn.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                                         </td>
                                         <td className="whitespace-nowrap px-4 py-3">
@@ -2248,9 +2256,23 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                         const reviewContext = needsReview ? getReviewContext(selectedTxn) : null;
                         const rdSuggestion = getRdSuggestion(selectedTxn);
                         const showRdRow = needsReview && rdSuggestion !== null;
+                        // Documentation-required items count as confirmed when a
+                        // file has been uploaded, so the explicit checkbox tick
+                        // isn't needed if the underlying evidence is present.
+                        const selectedTxnDocs = uploadedDocs[selectedTxn.id] ?? [];
                         const allConfirmed =
-                            (!reviewContext || confirmedIdxs.size === reviewContext.confirmItems.length) &&
+                            (!reviewContext || reviewContext.confirmItems.every((item, i) => {
+                                const needsDoc = item.toLowerCase().includes("documentation");
+                                return confirmedIdxs.has(i) || (needsDoc && selectedTxnDocs.length > 0);
+                            })) &&
                             (!showRdRow || rdRowChecked);
+                        const approveTransaction = () => {
+                            setTransactions((prev) => prev.map((t) => (t.id === selectedTxn.id ? { ...t, approved: true } : t)));
+                            setSelectedTxnId(null);
+                            setMemo("");
+                            setSlideoutLabelOpen(false);
+                            setDocZoom(100);
+                        };
                         return (
                             <div className="flex size-full">
                                 {/* Left panel – Transaction Details */}
@@ -2298,13 +2320,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                             <div className="space-y-2">
                                                 <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Details</h3>
                                                 <div className="divide-y divide-secondary rounded-xl border border-secondary">
-                                                    <div className="flex items-center justify-between px-3 py-2.5">
-                                                        <span className="flex items-center gap-2 text-sm text-tertiary">
-                                                            <Calendar className="size-3.5 text-fg-quaternary" />
-                                                            Date
-                                                        </span>
-                                                        <span className="text-sm font-medium text-primary">{selectedTxn.date}</span>
-                                                    </div>
                                                     <div className="flex items-center justify-between px-3 py-2.5">
                                                         <span className="flex items-center gap-2 text-sm text-tertiary">
                                                             <Hash01 className="size-3.5 text-fg-quaternary" />
@@ -2488,7 +2503,11 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                                 </li>
                                                             )}
                                                             {reviewContext.confirmItems.map((item, i) => {
-                                                                const isChecked = confirmedIdxs.has(i);
+                                                                const needsDoc = item.toLowerCase().includes("documentation");
+                                                                const txnDocs = uploadedDocs[selectedTxn.id] ?? [];
+                                                                // Doc-required items auto-tick once at least one file is
+                                                                // uploaded; that way the upload IS the confirmation.
+                                                                const isChecked = needsDoc ? (confirmedIdxs.has(i) || txnDocs.length > 0) : confirmedIdxs.has(i);
                                                                 return (
                                                                     <li key={i}>
                                                                         <label className="flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-secondary">
@@ -2517,6 +2536,54 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                                             </span>
                                                                             <span className={cx(isChecked && "text-primary")}>{item}</span>
                                                                         </label>
+                                                                        {needsDoc && (
+                                                                            <div className="mt-2 ml-6 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                                                                {txnDocs.map((doc, di) => (
+                                                                                    <div key={di} className="flex items-center gap-2 rounded-md border border-secondary bg-secondary px-2 py-1.5">
+                                                                                        <FileAttachment02 className="size-3.5 shrink-0 text-fg-quaternary" />
+                                                                                        <span className="flex-1 truncate text-xs text-primary">{doc.name}</span>
+                                                                                        <span className="text-[10px] text-tertiary tabular-nums">{(doc.size / 1024).toFixed(1)} KB</span>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                setUploadedDocs((prev) => ({
+                                                                                                    ...prev,
+                                                                                                    [selectedTxn.id]: (prev[selectedTxn.id] ?? []).filter((_, idx) => idx !== di),
+                                                                                                }));
+                                                                                            }}
+                                                                                            className="text-fg-quaternary transition hover:text-fg-error-primary"
+                                                                                            aria-label="Remove document"
+                                                                                        >
+                                                                                            <XClose className="size-3" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ))}
+                                                                                <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-secondary bg-primary px-2 py-1.5 text-xs font-medium text-tertiary transition hover:border-brand hover:bg-brand-primary_alt hover:text-brand-secondary">
+                                                                                    <Upload01 className="size-3.5" />
+                                                                                    <span>{txnDocs.length === 0 ? "Upload supporting document" : "Add another document"}</span>
+                                                                                    <input
+                                                                                        type="file"
+                                                                                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                                                                                        className="hidden"
+                                                                                        onChange={(e) => {
+                                                                                            const files = Array.from(e.target.files ?? []);
+                                                                                            if (files.length === 0) return;
+                                                                                            setUploadedDocs((prev) => ({
+                                                                                                ...prev,
+                                                                                                [selectedTxn.id]: [
+                                                                                                    ...(prev[selectedTxn.id] ?? []),
+                                                                                                    ...files.map((f) => ({ name: f.name, size: f.size })),
+                                                                                                ],
+                                                                                            }));
+                                                                                            e.target.value = "";
+                                                                                        }}
+                                                                                    />
+                                                                                </label>
+                                                                                {txnDocs.length === 0 && (
+                                                                                    <p className="text-[10px] text-quaternary">PDF, image, or doc. Itinerary, project notes, or contract.</p>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </li>
                                                                 );
                                                             })}
@@ -2551,32 +2618,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                 </div>
                                             )}
 
-                                            {/* Synced indicator — matched transactions don't need a
-                                                review section; they just need a confirmation that the
-                                                ledger is up to date. */}
-                                            {qbStatus === "matched" && (
-                                                <div className="flex items-start gap-2 rounded-xl border border-secondary bg-success-secondary/30 p-3">
-                                                    <CheckCircle className="mt-0.5 size-4 shrink-0 text-fg-success-primary" />
-                                                    <div className="text-xs leading-relaxed text-secondary">
-                                                        <p className="font-semibold text-primary">Synced to QuickBooks</p>
-                                                        <p className="mt-0.5">This transaction is reconciled against your QuickBooks ledger. No action needed.</p>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* AI's recommendation */}
-                                            <div className="space-y-2">
-                                                <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">AI&apos;s recommendation</h3>
-                                                <div className="rounded-xl bg-gradient-to-r from-purple-100/60 to-blue-100/60 px-3 py-2.5">
-                                                    <div className="flex items-start gap-2">
-                                                        <Stars01 className="mt-0.5 size-3.5 shrink-0 text-fg-brand-secondary_alt" />
-                                                        <p className="text-xs leading-relaxed text-tertiary">
-                                                            {selectedTxn.aiReasoning}
-                                                            <span className="ml-1 font-medium text-secondary">Confidence: {selectedTxn.confidence}%.</span>
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -2593,6 +2634,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                             iconLeading={qbStatus === "unmatched" ? Link01 : CheckCircle}
                                             className="w-full"
                                             isDisabled={qbStatus === "needs-sync" ? !allConfirmed : qbStatus === "matched"}
+                                            onClick={qbStatus === "matched" ? undefined : approveTransaction}
                                         >
                                             {qbStatus === "needs-sync"
                                                 ? "Approve & sync to QuickBooks"
