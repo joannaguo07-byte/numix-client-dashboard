@@ -139,24 +139,6 @@ const CONFIDENCE_OPTIONS = [
     { id: "low", label: "Low (<70%)" },
 ];
 
-// ─── QuickBooks Reconciliation Status ───────────────────────────────────────
-//
-// Bank transactions get reconciled into the QuickBooks ledger. There are
-// three states for any txn: matched (already in QB with the right COA),
-// unmatched (in QB but with conflicting category or no link), and
-// needs-sync (AI flagged it for review before it can be pushed to QB).
-// Status is derived from existing fields so this stays demo-data friendly.
-
-type QbStatus = "matched" | "unmatched" | "needs-sync";
-
-function getQbStatus(t: { confidence: number; id: string; approved?: boolean }): QbStatus {
-    // Once the user has explicitly approved a transaction it counts as
-    // reconciled to QB regardless of confidence or id-based seeding.
-    if (t.approved) return "matched";
-    if (t.confidence < 90) return "needs-sync";
-    if (parseInt(t.id, 10) % 4 === 0) return "unmatched";
-    return "matched";
-}
 
 // ─── Labels (Tax Credit Tags) ─────────────────────────────────────────────
 
@@ -243,68 +225,6 @@ const TRANSACTIONS_INIT = [
     { id: "24", date: "Dec 15, 2025", month: "2025-12", description: "Holiday Team Dinner", amount: -1200.00, coaCode: "60000", account: "Credit Card ···7392", confidence: 72, labels: [] as string[], aiReasoning: "Team event expense, not eligible for tax credits" },
     { id: "25", date: "Dec 10, 2025", month: "2025-12", description: "WeWork Office Rent", amount: -3200.00, coaCode: "68100", account: "Checking ···4821", confidence: 98, labels: ["disabled-access"], aiReasoning: "Office rent for ADA-compliant space" },
 ];
-
-// ─── Unmatched-in-QuickBooks reasons ─────────────────────────────────────────
-//
-// When a bank transaction has high AI confidence (so it's NOT "needs-sync")
-// but still doesn't reconcile cleanly against the QuickBooks ledger, we
-// surface the specific reason in the detail panel. Each reason comes with a
-// suggested 1-click resolution. Keyed by transaction id so the demo data
-// stays explainable.
-
-type UnmatchedSuggestionType = "match" | "create" | "duplicate";
-
-interface UnmatchedReason {
-    reasons: string[];
-    suggestion: { label: string; type: UnmatchedSuggestionType };
-}
-
-const UNMATCHED_REASONS: Record<string, UnmatchedReason> = {
-    "4": {
-        reasons: [
-            "No corresponding entry found in QuickBooks on Mar 8, 2026",
-            "QuickBooks has a Google Ads charge of $1,150.00 posted Mar 9 — possible same charge with a 1-day post delay",
-        ],
-        suggestion: { label: "Match to Mar 9 QuickBooks entry", type: "match" },
-    },
-    "12": {
-        reasons: [
-            "AWS bill is in QuickBooks under \"Software & Subscriptions\" for $812.50, but posted Feb 22 — bank charge was Feb 20",
-            "Date gap exceeds the 1-day auto-reconcile window",
-        ],
-        suggestion: { label: "Confirm match with Feb 22 entry", type: "match" },
-    },
-    "16": {
-        reasons: [
-            "Invoice #4310 (Gamma LLC) exists in QuickBooks but no payment-received entry was posted",
-            "Bank deposit needs to be linked to the open invoice to close it out",
-        ],
-        suggestion: { label: "Apply payment to Invoice #4310", type: "match" },
-    },
-    "20": {
-        reasons: [
-            "No invoice in QuickBooks for Delta Partners — January retainer wasn't generated from the recurring template",
-            "Bank received the payment but QB has no matching open invoice",
-        ],
-        suggestion: { label: "Create retainer invoice in QuickBooks", type: "create" },
-    },
-    "24": {
-        reasons: [
-            "QuickBooks has \"Team Event - Year-End\" on Dec 14 for $1,200.00 — name differs but amount and date are within tolerance",
-            "Likely the same transaction recorded under a different memo",
-        ],
-        suggestion: { label: "Match to Dec 14 QuickBooks entry", type: "match" },
-    },
-};
-
-function getUnmatchedReason(txnId: string): UnmatchedReason {
-    return (
-        UNMATCHED_REASONS[txnId] ?? {
-            reasons: ["No matching entry found in QuickBooks for this transaction"],
-            suggestion: { label: "Create entry in QuickBooks", type: "create" },
-        }
-    );
-}
 
 // ─── Reports Data ───────────────────────────────────────────────────────────
 
@@ -1651,8 +1571,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
     const [searchQuery, setSearchQuery] = useState("");
     const [coaFilter, setCoaFilter] = useState("all");
     const [monthFilter, setMonthFilter] = useState("2026-03");
-    const [qbFilter, setQbFilter] = useState<"all" | QbStatus>("all");
-    const [qbDropdownOpen, setQbDropdownOpen] = useState(false);
     // Demo: every full URL reload starts from the canonical seed data. The
     // localStorage persistence used to live here; it's removed so refreshing
     // resets all label edits. In-app navigation still preserves R&D labels
@@ -1718,13 +1636,9 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
     const monthTxns = transactions.filter((t) => t.month === monthFilter);
     const totalTxns = monthTxns.length;
     const verifiedCount = monthTxns.filter((t) => t.confidence >= 95).length;
-    // "Needs review" now spans both AI-flagged (low confidence, needs-sync) and
-    // QB-unmatched transactions, because both require the user to take action
-    // before the books are correct. The banner and per-row highlight use this
-    // unified count.
-    const flaggedCountSync = monthTxns.filter((t) => getQbStatus(t) === "needs-sync").length;
-    const flaggedCountUnmatched = monthTxns.filter((t) => getQbStatus(t) === "unmatched").length;
-    const needsReviewCount = flaggedCountSync + flaggedCountUnmatched;
+    // Approval clears the flag, so it counts only as-yet-unreviewed low-
+    // confidence transactions.
+    const needsReviewCount = monthTxns.filter((t) => !t.approved && t.confidence < 90).length;
     const monthLabel = MONTH_OPTIONS.find((m) => m.id === monthFilter)?.label ?? monthFilter;
 
     const selectedAccount = accountFilter === "all" ? null : bankAccounts.find((a) => a.name === accountFilter);
@@ -1755,7 +1669,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
             if (searchQuery && !t.description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
             if (coaFilter !== "all" && t.coaCode !== coaFilter) return false;
             if (accountFilter !== "all" && t.account !== accountFilter) return false;
-            if (qbFilter !== "all" && getQbStatus(t) !== qbFilter) return false;
             return true;
         })
         .sort((a, b) => {
@@ -1832,19 +1745,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                     <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-200/80 via-purple-100/70 to-blue-200/80 px-4 py-3.5">
                         <Flag04 className="size-4 shrink-0 text-orange-dark-500" />
                         <p className="text-sm text-tertiary">
-                            <span className="font-semibold text-primary">{needsReviewCount} transaction{needsReviewCount > 1 ? "s" : ""}</span> need your review this month
-                            {(flaggedCountSync > 0 || flaggedCountUnmatched > 0) && (
-                                <span className="text-tertiary">
-                                    {" — "}
-                                    {flaggedCountSync > 0 && (
-                                        <span><span className="font-semibold text-orange-dark-600">{flaggedCountSync}</span> AI-flagged</span>
-                                    )}
-                                    {flaggedCountSync > 0 && flaggedCountUnmatched > 0 && <span>, </span>}
-                                    {flaggedCountUnmatched > 0 && (
-                                        <span><span className="font-semibold text-error-primary">{flaggedCountUnmatched}</span> unmatched in QuickBooks</span>
-                                    )}
-                                </span>
-                            )}
+                            AI flagged <span className="font-semibold text-primary">{needsReviewCount} transaction{needsReviewCount > 1 ? "s" : ""}</span> for review this month
                         </p>
                     </div>
                 )}
@@ -1904,100 +1805,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                             <Plus className="size-4" />
                             Add Bank
                         </button>
-
-                        {/* QuickBooks summary pill — collapses the previous status
-                            tab row into a single attention-grabbing button. Shows
-                            the actionable count when there's something to do, or
-                            "All synced" when everything is clean. Click opens a
-                            popover with the full status breakdown. */}
-                        {(() => {
-                            const scopedTxns = accountFilter === "all" ? monthTxns : monthTxns.filter((t) => t.account === accountFilter);
-                            const counts = {
-                                all: scopedTxns.length,
-                                "needs-sync": scopedTxns.filter((t) => getQbStatus(t) === "needs-sync").length,
-                                "unmatched": scopedTxns.filter((t) => getQbStatus(t) === "unmatched").length,
-                                "matched": scopedTxns.filter((t) => getQbStatus(t) === "matched").length,
-                            };
-                            const attentionCount = counts["needs-sync"] + counts["unmatched"];
-                            const isFiltered = qbFilter !== "all";
-                            const filterLabel = qbFilter === "needs-sync" ? "Needs Sync" : qbFilter === "unmatched" ? "Unmatched" : qbFilter === "matched" ? "Synced" : "";
-                            return (
-                                <div className="relative ml-auto">
-                                    <button
-                                        type="button"
-                                        onClick={() => setQbDropdownOpen((v) => !v)}
-                                        className={cx(
-                                            "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition duration-100 ease-linear",
-                                            isFiltered
-                                                ? "border-brand bg-brand-primary_alt text-brand-secondary"
-                                                : attentionCount > 0
-                                                    ? "border-secondary bg-primary text-primary hover:bg-secondary"
-                                                    : "border-secondary bg-primary text-tertiary hover:bg-secondary",
-                                        )}
-                                        aria-haspopup="menu"
-                                        aria-expanded={qbDropdownOpen}
-                                    >
-                                        <span className="flex items-center gap-1.5">
-                                            <span className={cx("inline-block size-1.5 rounded-full", attentionCount > 0 ? "bg-warning-solid" : "bg-success-solid")} aria-hidden />
-                                            <span className="text-xs text-tertiary">QuickBooks</span>
-                                        </span>
-                                        <span className="h-3.5 w-px bg-secondary" aria-hidden />
-                                        {isFiltered ? (
-                                            <span className="flex items-center gap-1.5">
-                                                <span>{filterLabel}</span>
-                                                <span className="rounded-full bg-brand-primary px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-brand-secondary">{counts[qbFilter as QbStatus]}</span>
-                                            </span>
-                                        ) : attentionCount > 0 ? (
-                                            <span className="flex items-center gap-1.5">
-                                                <AlertCircle className="size-3.5 text-fg-warning-primary" />
-                                                <span><span className="tabular-nums">{attentionCount}</span> need attention</span>
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-1.5">
-                                                <CheckCircle className="size-3.5 text-fg-success-primary" />
-                                                <span>All synced</span>
-                                            </span>
-                                        )}
-                                        <ChevronDown className={cx("size-3.5 text-fg-quaternary transition", qbDropdownOpen && "rotate-180")} />
-                                    </button>
-                                    {qbDropdownOpen && (
-                                        <>
-                                            <div className="fixed inset-0 z-10" onClick={() => setQbDropdownOpen(false)} />
-                                            <div className="absolute right-0 top-full z-20 mt-1.5 w-64 overflow-hidden rounded-lg border border-secondary bg-primary shadow-lg">
-                                                <div className="border-b border-secondary px-3 py-2">
-                                                    <p className="text-xs font-semibold text-primary">QuickBooks sync</p>
-                                                    <p className="mt-0.5 text-[11px] text-tertiary">Synced 2 min ago · Filter by status</p>
-                                                </div>
-                                                {([
-                                                    { id: "all", label: "All transactions", Icon: null, iconClass: "" },
-                                                    { id: "needs-sync", label: "Needs Sync", Icon: Clock, iconClass: "text-fg-warning-primary" },
-                                                    { id: "unmatched", label: "Unmatched", Icon: AlertCircle, iconClass: "text-fg-error-primary" },
-                                                    { id: "matched", label: "Synced", Icon: CheckCircle, iconClass: "text-fg-success-primary" },
-                                                ] as const).map((opt) => {
-                                                    const isActive = qbFilter === opt.id;
-                                                    return (
-                                                        <button
-                                                            key={opt.id}
-                                                            type="button"
-                                                            onClick={() => { setQbFilter(opt.id); setQbDropdownOpen(false); }}
-                                                            className={cx(
-                                                                "flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium transition hover:bg-primary_hover",
-                                                                isActive && "bg-active",
-                                                            )}
-                                                        >
-                                                            {opt.Icon ? <opt.Icon className={cx("size-3.5", opt.iconClass)} /> : <span className="size-3.5" />}
-                                                            <span className="flex-1 text-primary">{opt.label}</span>
-                                                            <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-tertiary">{counts[opt.id]}</span>
-                                                            {isActive && <Check className="size-3.5 text-fg-brand-primary" />}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        })()}
                     </div>
 
                     {/* Filters row */}
@@ -2063,7 +1870,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                 <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Chart of Account</th>
                                 <th className="w-[150px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Labels</th>
                                 {accountFilter === "all" && <th className="whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">Account</th>}
-                                <th className="w-[130px] whitespace-nowrap px-4 py-2.5 text-left font-medium text-secondary">QuickBooks</th>
                                 <th className="w-10 px-4 py-2.5" />
                             </tr>
                         </thead>
@@ -2071,23 +1877,12 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                             {filtered.map((txn) => {
                                 const coa = CHART_OF_ACCOUNTS.find((a) => a.code === txn.coaCode);
                                 const isLabelOpen = labelDropdownOpen === txn.id;
-                                const needsReview = txn.confidence < 90;
-                                const rowQbStatus = getQbStatus(txn);
-                                const isUnmatched = rowQbStatus === "unmatched";
+                                const needsReview = !txn.approved && txn.confidence < 90;
                                 return (
-                                    <tr
-                                        key={txn.id}
-                                        onClick={() => setSelectedTxnId(txn.id)}
-                                        className={cx(
-                                            "cursor-pointer border-b border-secondary last:border-b-0 transition hover:bg-primary_hover",
-                                            needsReview && "border-l-2 border-l-orange-dark-500 bg-orange-dark-50",
-                                            isUnmatched && "border-l-2 border-l-error-500 bg-error-secondary/30",
-                                        )}
-                                    >
+                                    <tr key={txn.id} onClick={() => setSelectedTxnId(txn.id)} className={cx("cursor-pointer border-b border-secondary last:border-b-0 transition hover:bg-primary_hover", needsReview && "border-l-2 border-l-orange-dark-500 bg-orange-dark-50")}>
                                         <td className="whitespace-nowrap px-4 py-3 text-tertiary">
                                             <div className="flex items-center gap-2">
                                                 {needsReview && <Flag04 className="size-3.5 text-orange-dark-500" />}
-                                                {isUnmatched && <Flag04 className="size-3.5 text-fg-error-primary" />}
                                                 {txn.date}
                                             </div>
                                         </td>
@@ -2167,27 +1962,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                             </div>
                                         </td>
                                         {accountFilter === "all" && <td className="whitespace-nowrap px-4 py-3 text-primary">{txn.account}</td>}
-                                        <td className="whitespace-nowrap px-4 py-3">
-                                            {(() => {
-                                                const status = getQbStatus(txn);
-                                                const config = {
-                                                    "matched": { Icon: CheckCircle, label: "Synced", color: "text-fg-success-primary", bg: "bg-success-secondary" },
-                                                    "unmatched": { Icon: AlertCircle, label: "Unmatched", color: "text-fg-error-primary", bg: "bg-error-secondary" },
-                                                    "needs-sync": { Icon: Clock, label: "Needs Sync", color: "text-fg-warning-primary", bg: "bg-warning-secondary" },
-                                                }[status];
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); setQbFilter(status); }}
-                                                        className={cx("inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition hover:opacity-80", config.bg, config.color)}
-                                                        title={`Filter to ${config.label}`}
-                                                    >
-                                                        <config.Icon className="size-3.5" />
-                                                        <span>{config.label}</span>
-                                                    </button>
-                                                );
-                                            })()}
-                                        </td>
                                         <td className="relative px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
@@ -2245,12 +2019,7 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                     {({ close }) => {
                         if (!selectedTxn) return null;
                         const coa = CHART_OF_ACCOUNTS.find((a) => a.code === selectedTxn.coaCode);
-                        const needsReview = selectedTxn.confidence < 90;
-                        // QuickBooks reconciliation status drives the badge, the
-                        // reasoning section, and the footer button. needs-sync and
-                        // unmatched both require user action; matched is done.
-                        const qbStatus = getQbStatus(selectedTxn);
-                        const unmatchedInfo = qbStatus === "unmatched" ? getUnmatchedReason(selectedTxn.id) : null;
+                        const needsReview = !selectedTxn.approved && selectedTxn.confidence < 90;
                         // Compute review context once at the top so the body and footer
                         // both see the same checklist count for the Approve gate.
                         const reviewContext = needsReview ? getReviewContext(selectedTxn) : null;
@@ -2303,12 +2072,10 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                     </p>
                                                 </div>
                                                 <div className="flex flex-col items-end gap-1.5">
-                                                    {qbStatus === "needs-sync" ? (
+                                                    {needsReview ? (
                                                         <Badge color="warning" size="sm" type="pill-color">Needs Review</Badge>
-                                                    ) : qbStatus === "unmatched" ? (
-                                                        <Badge color="error" size="sm" type="pill-color">Needs Match</Badge>
                                                     ) : (
-                                                        <Badge color="success" size="sm" type="pill-color">Synced to QB</Badge>
+                                                        <Badge color="success" size="sm" type="pill-color">Verified</Badge>
                                                     )}
                                                     <Badge color={selectedTxn.amount > 0 ? "success" : "gray"} size="sm" type="pill-color">
                                                         {selectedTxn.amount > 0 ? "Income" : "Expense"}
@@ -2592,32 +2359,6 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                                 </>
                                             )}
 
-                                            {/* Why unmatched — parallel to "Why flagged" but for high-
-                                                confidence transactions that don't reconcile against the
-                                                QuickBooks ledger. Surfaces the specific mismatch and a
-                                                one-click resolution so the user can close the gap without
-                                                hunting through QB. */}
-                                            {qbStatus === "unmatched" && unmatchedInfo && (
-                                                <div className="space-y-2">
-                                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-tertiary">Why unmatched in QuickBooks</h3>
-                                                    <div className="rounded-xl border border-error-300 bg-error-secondary/40 p-3">
-                                                        <ul className="space-y-2">
-                                                            {unmatchedInfo.reasons.map((r, i) => (
-                                                                <li key={i} className="flex items-start gap-2 text-xs leading-relaxed text-secondary">
-                                                                    <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-fg-error-primary" />
-                                                                    <span>{r}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                                                            <Button color="primary" size="sm" iconLeading={Link01}>{unmatchedInfo.suggestion.label}</Button>
-                                                            <Button color="secondary" size="sm">Mark as duplicate</Button>
-                                                            <Button color="tertiary" size="sm">Review in QuickBooks</Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
                                         </div>
                                     </div>
 
@@ -2631,16 +2372,12 @@ function TransactionsPage({ onNavigate, onRdLabel, linkedRdTxnIds, unlinkedRdTxn
                                         <Button
                                             color="primary"
                                             size="sm"
-                                            iconLeading={qbStatus === "unmatched" ? Link01 : CheckCircle}
+                                            iconLeading={CheckCircle}
                                             className="w-full"
-                                            isDisabled={qbStatus === "needs-sync" ? !allConfirmed : qbStatus === "matched"}
-                                            onClick={qbStatus === "matched" ? undefined : approveTransaction}
+                                            isDisabled={needsReview ? !allConfirmed : true}
+                                            onClick={needsReview ? approveTransaction : undefined}
                                         >
-                                            {qbStatus === "needs-sync"
-                                                ? "Approve & sync to QuickBooks"
-                                                : qbStatus === "unmatched"
-                                                    ? "Resolve match in QuickBooks"
-                                                    : "Synced to QuickBooks"}
+                                            {needsReview ? "Approve Transaction" : "Verified"}
                                         </Button>
                                     </footer>
                                 </div>

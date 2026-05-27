@@ -221,11 +221,11 @@ const recentConversations = [
 const INITIAL_TASKS: Task[] = [
     {
         id: "flagged-transactions",
-        title: "4 transactions need your review",
+        title: "3 transactions flagged for your review",
         taskNumber: "NUM-1099",
         status: "waiting-you",
         category: "Bookkeeping",
-        description: "3 transactions were AI-flagged for low-confidence categorisation and 1 doesn't match an entry in QuickBooks. Confirm or resolve them in Bookkeeping → Transactions.",
+        description: "AI couldn't categorise 3 recent transactions confidently. Confirm or recategorise them in Bookkeeping → Transactions.",
         dueDate: "Due this week",
         source: "System Generated",
         channel: "In-app",
