@@ -34,7 +34,7 @@ interface Integration {
     tagline: string;
     sharedData: string[];
     time: string;
-    priority: "recommended" | "optional";
+    priority: "required" | "recommended" | "optional";
     steps: string[];
     details: { name: string; email: string; role: string };
     // Optional URL to a brand logo (SVG). When set, LogoBadge renders the
@@ -60,7 +60,7 @@ const INTEGRATIONS: Integration[] = [
         tagline: "Sync your books so your CPA can run reports without asking you for exports.",
         sharedData: ["Chart of accounts", "Transactions", "Invoices & bills", "Vendor list"],
         time: "~2 min",
-        priority: "recommended",
+        priority: "required",
         steps: [
             "Sign in to QuickBooks Online as the Admin",
             "Go to Settings ⚙ → Manage Users",
@@ -846,7 +846,12 @@ function CategoryRow({
                                         <div className="flex items-center gap-3 px-4 py-3">
                                             <LogoBadge initials={integration.initials} color={integration.color} logoUrl={integration.logoUrl} />
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-medium text-primary">{integration.name}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-medium text-primary">{integration.name}</p>
+                                                    {integration.priority === "required" && !isConnected && (
+                                                        <Badge color="error" size="sm" type="pill-color">Required</Badge>
+                                                    )}
+                                                </div>
                                                 <p className="text-xs text-tertiary">{integration.tagline}</p>
                                             </div>
                                             <div className="shrink-0">
@@ -1070,6 +1075,11 @@ export function IntegrationsSetup({
     const allConnected = ACCESS_CATEGORIES.every((cat) =>
         INTEGRATIONS.filter((i) => i.category === cat.id).some((i) => connected.has(i.id)),
     );
+    // Required integrations gate Continue with no escape hatch — the user
+    // can skip "recommended" or "optional" platforms and finish later from
+    // Settings, but anything marked "required" has to be connected first.
+    const missingRequired = INTEGRATIONS.filter((i) => i.priority === "required" && !connected.has(i.id));
+    const hasMissingRequired = missingRequired.length > 0;
 
     async function handleComplete() {
         setCompleting(true);
@@ -1128,6 +1138,12 @@ export function IntegrationsSetup({
                         <div className="space-y-2.5">
                             {ACCESS_CATEGORIES.map((cat) => {
                                 const isConnected = getCategoryStatus(cat.id);
+                                // If this category has a required integration that
+                                // isn't connected yet, surface that on the status
+                                // row instead of the generic "Not set up yet".
+                                const requiredMissingInCategory = INTEGRATIONS.find(
+                                    (i) => i.category === cat.id && i.priority === "required" && !connected.has(i.id),
+                                );
                                 return (
                                     <div key={cat.id} className="flex items-center justify-between">
                                         <span className="text-sm text-secondary">{cat.accessLabel}</span>
@@ -1135,6 +1151,10 @@ export function IntegrationsSetup({
                                             <span className="flex items-center gap-1 text-xs font-medium text-success-primary">
                                                 <Check className="size-3.5" aria-hidden />
                                                 Connected
+                                            </span>
+                                        ) : requiredMissingInCategory ? (
+                                            <span className="text-xs font-medium text-error-primary">
+                                                {requiredMissingInCategory.name} required
                                             </span>
                                         ) : (
                                             <span className="text-xs font-medium text-tertiary">
@@ -1183,7 +1203,14 @@ export function IntegrationsSetup({
                     >
                         Back
                     </Button>
-                    <div className="relative" ref={confirmRef}>
+                    <div className="flex items-center gap-3">
+                        {hasMissingRequired && (
+                            <div className="flex items-center gap-1.5 rounded-lg border border-error bg-error-secondary px-3 py-1.5 text-xs font-semibold text-error-primary">
+                                <InfoCircle className="size-3.5 shrink-0" aria-hidden />
+                                <span>Connect {missingRequired.map((i) => i.name).join(", ")} first</span>
+                            </div>
+                        )}
+                        <div className="relative" ref={confirmRef}>
                         <Button
                             color="secondary"
                             size="md"
@@ -1191,19 +1218,20 @@ export function IntegrationsSetup({
                             isLoading={completing}
                             showTextWhileLoading
                             onClick={() => {
+                                if (hasMissingRequired) return;
                                 if (allConnected) {
                                     handleComplete();
                                 } else {
                                     setConfirmOpen((o) => !o);
                                 }
                             }}
-                            isDisabled={completing}
+                            isDisabled={completing || hasMissingRequired}
                         >
                             Continue
                         </Button>
 
                         <AnimatePresence>
-                            {confirmOpen && (
+                            {confirmOpen && !hasMissingRequired && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 8, scale: 0.97 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1245,6 +1273,7 @@ export function IntegrationsSetup({
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                        </div>
                     </div>
                 </div>
             </div>
