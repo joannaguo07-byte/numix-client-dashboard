@@ -193,7 +193,23 @@ const AVAILABLE_BANKS = [
     { id: "other", name: "Other Bank", description: "Connect manually via routing number" },
 ];
 
-const TRANSACTIONS_INIT = [
+type TransactionRecord = {
+    id: string;
+    date: string;
+    month: string;
+    description: string;
+    amount: number;
+    coaCode: string;
+    account: string;
+    confidence: number;
+    labels: string[];
+    aiReasoning: string;
+    // Set to true once the user explicitly approves the transaction in
+    // the detail slideout — clears the "needs review" flag everywhere.
+    approved?: boolean;
+};
+
+const TRANSACTIONS_INIT: TransactionRecord[] = [
     // March 2026
     { id: "1", date: "Mar 11, 2026", month: "2026-03", description: "Stripe Payment - Customer Invoice #4521", amount: 2450.00, coaCode: "44400", account: "Checking ···4821", confidence: 98, labels: [] as string[], aiReasoning: "Stripe recurring invoice payment matched to customer #4521 in AR ledger" },
     { id: "2", date: "Mar 10, 2026", month: "2026-03", description: "AWS Monthly Services", amount: -847.32, coaCode: "69000", account: "Checking ···4821", confidence: 95, labels: ["rd"], aiReasoning: "AWS cloud compute is used primarily for ML model training, qualifies as R&D supply expense under IRC §41" },
